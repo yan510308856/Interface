@@ -1,0 +1,48 @@
+# macOS and editors
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# JavaScript presentation tooling
+node_modules/
+npm-debug.log*
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local generated assets and large research artifacts
+artifacts/
+docs/archive/*.pdf
+*.pptx
+*.pptx.inspect.ndjson
+
+# Experiment runtime data must be content-addressed and archived separately
+experiment/results/
+experiment/workspaces/
+experiment/cache/
+swebench_repos/
+
+# Models and checkpoints
+*.bin
+*.ckpt
+*.safetensors
+*.pt
+*.pth
