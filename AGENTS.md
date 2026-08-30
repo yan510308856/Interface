@@ -18,12 +18,13 @@ If these documents conflict, stop and report the conflict before editing code.
 
 ## Current State
 
-- Current implementation stage: **R0 — Documentation and workspace baseline**.
-- The existing D0 implementation follows the archived v28 protocol and must be
-  audited before it is migrated to the v29 R0–R8 protocol.
-- Do not start R1 until the migration audit is recorded.
+- Current implementation stage: **R1 — Qwen / ModelScope / A100 feasibility**.
+- **R0 — Documentation and workspace baseline** passed on 2026-08-30; its
+  migration audit and file-by-file disposition are recorded in `artifacts/r0/`.
+- The existing D0 implementation remains v28 evidence and must be migrated only
+  in the target stage assigned by `artifacts/r0/migration_inventory.json`.
 - The notebook in `notebooks/` is exploratory support, not the experiment runner
-  and not evidence that D0 has passed.
+  and not evidence that any R-stage has passed.
 
 Update this section only when the preceding stage has a recorded passing decision.
 

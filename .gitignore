@@ -35,6 +35,11 @@ artifacts/*
 !artifacts/d0/digests.json
 !artifacts/d0/validation_report.json
 !artifacts/d0/task_reproducibility.json
+!artifacts/r0/
+!artifacts/r0/MIGRATION_AUDIT.md
+!artifacts/r0/migration_inventory.json
+!artifacts/r0/validation.json
+!artifacts/r0/decision.yaml
 docs/archive/*.pdf
 *.pptx
 *.pptx.inspect.ndjson
