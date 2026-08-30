@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema_version": "canonical-operations-v0.1",
+  "contract": {
+    "shared_by": ["atomic", "restricted_python"],
+    "additional_backend_operations": false,
+    "request_envelope": {"required": ["operation", "arguments"], "optional": ["request_id"]},
+    "result_envelope": {"required": ["ok", "operation", "request_id"], "success_field": "result", "error_field": "error"},
+    "error": {
+      "required": ["code", "message", "retryable"],
+      "codes": ["invalid_request", "permission_denied", "not_found", "conflict", "limit_exceeded", "timeout", "execution_error", "internal_error"]
+    },
+    "audit": "Every attempt, including invalid, denied, timed-out, and failed requests, creates one canonical audit event."
+  },
+  "operations": {
+    "list_dir": {
+      "parameters": {
+        "path": {"type": "string", "required": true, "scope": "repository-relative directory"},
+        "recursive": {"type": "boolean", "required": false, "default": false}
+      },
+      "returns": {"entries": {"type": "array", "items": {"type": "object", "required": ["path", "kind"], "properties": {"path": "string", "kind": "file|directory|symlink"}}}, "truncated": "boolean"},
+      "side_effect": "none", "permission": "repository_read", "determinism": "deterministic for an unchanged directory tree; entries sorted lexicographically"
+    },
+    "search_text": {
+      "parameters": {
+        "query": {"type": "string", "required": true, "min_length": 1},
+        "path": {"type": "string", "required": false, "default": ".", "scope": "repository-relative"},
+        "glob": {"type": "string", "required": false},
+        "case_sensitive": {"type": "boolean", "required": false, "default": true}
+      },
+      "returns": {"matches": {"type": "array", "items": {"type": "object", "required": ["path", "line", "text"]}}, "truncated": "boolean"},
+      "side_effect": "none", "permission": "repository_read", "determinism": "deterministic for unchanged files; results sorted by path and line"
+    },
+    "read_file": {
+      "parameters": {
+        "path": {"type": "string", "required": true, "scope": "repository-relative file"},
+        "start_line": {"type": "integer", "required": false, "minimum": 1, "default": 1},
+        "end_line": {"type": "integer", "required": false, "minimum": 1}
+      },
+      "returns": {"path": "string", "content": "string", "start_line": "integer", "end_line": "integer", "truncated": "boolean", "sha256": "string"},
+      "limits": {"output_bytes": 65536}, "side_effect": "none", "permission": "repository_read", "determinism": "deterministic for unchanged file bytes"
+    },
+    "replace_text": {
+      "parameters": {
+        "path": {"type": "string", "required": true, "scope": "repository-relative existing regular file"},
+        "old_text": {"type": "string", "required": true, "min_length": 1},
+        "new_text": {"type": "string", "required": true},
+        "expected_replacements": {"type": "integer", "required": false, "minimum": 1, "default": 1}
+      },
+      "returns": {"path": "string", "replacements": "integer", "before_sha256": "string", "after_sha256": "string"},
+      "atomicity": "No write occurs unless the exact expected occurrence count matches; successful replacement is atomic.",
+      "side_effect": "modify_existing_repository_file", "permission": "repository_write", "determinism": "deterministic for unchanged input bytes"
+    },
+    "create_file": {
+      "parameters": {
+        "path": {"type": "string", "required": true, "scope": "repository-relative nonexistent regular file"},
+        "content": {"type": "string", "required": true}
+      },
+      "returns": {"path": "string", "bytes_written": "integer", "sha256": "string"},
+      "limits": {"content_bytes": 262144}, "atomicity": "Fails if the path exists; successful creation is atomic.",
+      "side_effect": "create_repository_file", "permission": "repository_create", "determinism": "deterministic for identical input and initial state"
+    },
+    "delete_file": {
+      "parameters": {"path": {"type": "string", "required": true, "scope": "repository-relative existing regular file"}},
+      "returns": {"path": "string", "deleted_sha256": "string"},
+      "side_effect": "delete_repository_file", "permission": "repository_delete", "determinism": "deterministic for identical initial state"
+    },
+    "run_process": {
+      "parameters": {
+        "argv": {"type": "array", "required": true, "min_items": 1, "items": {"type": "string"}, "shell_interpretation": false},
+        "timeout_seconds": {"type": "integer", "required": false, "minimum": 1, "maximum": 300, "default": 300}
+      },
+      "returns": {"exit_code": "integer|null", "stdout": "string", "stderr": "string", "timed_out": "boolean", "stdout_truncated": "boolean", "stderr_truncated": "boolean"},
+      "limits": {"stdout_bytes": 65536, "stderr_bytes": 65536},
+      "side_effect": "approved_process_tree_in_sandbox", "permission": "approved_test_execution", "determinism": "not guaranteed; argv, environment, limits, timestamps, and exit status are audited"
+    },
+    "git_diff": {
+      "parameters": {
+        "path": {"type": "string", "required": false, "default": ".", "scope": "repository-relative"},
+        "staged": {"type": "boolean", "required": false, "default": false}
+      },
+      "returns": {"diff": "string", "truncated": "boolean", "exit_code": "integer"},
+      "side_effect": "none", "permission": "git_inspection", "determinism": "deterministic for an unchanged index and working tree"
+    }
+  }
+}

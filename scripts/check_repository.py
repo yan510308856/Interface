@@ -8,15 +8,27 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_PATHS = (
     "AGENTS.md",
     "README.md",
-    "docs/interface28.md",
-    "docs/aug28experiment.md",
+    "docs/interface29.md",
+    "docs/aug29experiment.md",
+    "docs/archive/interface28.md",
+    "docs/archive/aug28experiment.md",
     "docs/archive/README.md",
     "experiment/README.md",
+    "experiment/configs/demo.yaml",
+    "experiment/configs/permission.yaml",
+    "experiment/configs/attack_manifest.yaml",
+    "experiment/configs/demo_schedule.csv",
+    "experiment/tasks/manifest.yaml",
+    "experiment/schemas/operations.yaml",
+    "artifacts/d0/D0_DECISION.md",
+    "artifacts/d0/digests.json",
+    "artifacts/d0/validation_report.json",
+    "artifacts/d0/task_reproducibility.json",
     "notebooks/README.md",
 )
 
 REQUIRED_AGENT_RULES = (
-    "D0 — Freeze Demo Spec",
+    "R0 — Documentation and workspace baseline",
     "exactly one canonical execution backend",
     "Atomic",
     "Restricted Python",
@@ -24,7 +36,7 @@ REQUIRED_AGENT_RULES = (
 )
 
 REQUIRED_IGNORE_RULES = (
-    "artifacts/",
+    "artifacts/*",
     "experiment/results/",
     "*.safetensors",
     ".env",

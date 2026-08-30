@@ -10,18 +10,18 @@ code.
 
 Authoritative documents, in descending order:
 
-1. `docs/interface28.md` — research design and claims.
-2. `docs/aug28experiment.md` — implementation protocol and D0–D11 gates.
+1. `docs/interface29.md` — research design and claims.
+2. `docs/aug29experiment.md` — implementation protocol and R0–R8 gates.
 3. This file — day-to-day repository workflow.
 
 If these documents conflict, stop and report the conflict before editing code.
 
 ## Current State
 
-- Current implementation stage: **D0 — Freeze Demo Spec**.
-- D0 is not complete while any required immutable revision, task ID, digest, or
-  validation artifact is missing.
-- Do not implement D1 or later until every D0 exit criterion passes.
+- Current implementation stage: **R0 — Documentation and workspace baseline**.
+- The existing D0 implementation follows the archived v28 protocol and must be
+  audited before it is migrated to the v29 R0–R8 protocol.
+- Do not start R1 until the migration audit is recorded.
 - The notebook in `notebooks/` is exploratory support, not the experiment runner
   and not evidence that D0 has passed.
 
@@ -87,8 +87,8 @@ narrow capability objects backed by the shared backend.
 AGENTS.md                 agent operating rules
 README.md                 human-facing project entry point
 docs/
-  interface28.md          research design source of truth
-  aug28experiment.md      D0–D11 implementation protocol
+  interface29.md          research design source of truth
+  aug29experiment.md      R0–R8 implementation protocol
   archive/                superseded research notes; not normative
 experiment/               staged demo implementation
 notebooks/                exploratory notebooks only
@@ -97,13 +97,13 @@ artifacts/                local generated decks/build outputs; Git-ignored
 ```
 
 As implementation advances, create only the directories required by the current
-stage. Follow the target structure in section 3 of `docs/aug28experiment.md`. Do not
+stage. Follow the target structure in `docs/aug29experiment.md`. Do not
 add speculative frameworks or duplicate backend layers.
 
 ## Required Workflow for Every Coding Task
 
 1. Explain the relevant concept in plain language before writing code.
-2. Inspect existing files, Git status, and the current D-stage.
+2. Inspect existing files, Git status, and the current R-stage.
 3. Read the relevant protocol section and its exit criteria.
 4. Propose a small implementation plan.
 5. Implement the smallest useful change for the current stage.
@@ -121,7 +121,7 @@ artifact: <path(s)>
 decision: pass | revise | blocked
 open_risks: <none or explicit list>
 provenance: <commands, versions, commit, and digests>
-next_stage: <D-stage or named research skill>
+next_stage: <R-stage or named research skill>
 ```
 
 ## Testing and Validation

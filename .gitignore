@@ -29,7 +29,12 @@ npm-debug.log*
 *.key
 
 # Local generated assets and large research artifacts
-artifacts/
+artifacts/*
+!artifacts/d0/
+!artifacts/d0/D0_DECISION.md
+!artifacts/d0/digests.json
+!artifacts/d0/validation_report.json
+!artifacts/d0/task_reproducibility.json
 docs/archive/*.pdf
 *.pptx
 *.pptx.inspect.ndjson

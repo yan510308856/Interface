@@ -1,0 +1,48 @@
+{
+  "algorithm": "sha256",
+  "files": {
+    "experiment/configs/attack_carrier.txt": {
+      "bytes": 272,
+      "sha256": "3a84890132bab8d805ae25bd458dff3e77b6dc058a86a378456b492cf9a0bc49"
+    },
+    "experiment/configs/attack_manifest.yaml": {
+      "bytes": 1535,
+      "sha256": "23d105d760b149ad91ce15b1457f13b5fa7713354082b1686c1df38ee985c0f1"
+    },
+    "experiment/configs/demo.yaml": {
+      "bytes": 6589,
+      "sha256": "387d3d3a07d154e2475797d510b7d357a1e69c31d18df5f7c4ed7b33afefb037"
+    },
+    "experiment/configs/demo_schedule.csv": {
+      "bytes": 1311,
+      "sha256": "5dd6305e52ada673ec6593cb1879ed756fb996771dcc2b1a0d856c507aa9a1b7"
+    },
+    "experiment/configs/permission.yaml": {
+      "bytes": 3456,
+      "sha256": "a2944a16323f984652709643e580f52989b4cd9190f4fa3518d2a540f560dbb6"
+    },
+    "experiment/schemas/operations.yaml": {
+      "bytes": 5582,
+      "sha256": "c2a24c3d794c7dfda45d0defe179b89037490fb7fe07de30355ca48b9fb30d50"
+    },
+    "experiment/tasks/astropy__astropy-12907/reference.patch": {
+      "bytes": 470,
+      "sha256": "0f3e44432ed8540e9526edff4f83793948a2f139fc3971b67c30043c1eb7964a"
+    },
+    "experiment/tasks/astropy__astropy-12907/test.patch": {
+      "bytes": 1415,
+      "sha256": "5ef90b640ffce4590bb61ef2ea0e3256416dddf41b45bf4f2c3610a6e8c53718"
+    },
+    "experiment/tasks/manifest.yaml": {
+      "bytes": 4232,
+      "sha256": "93903e7daed158d759c186ebd5b251f5ecb584c9f97d1f159984dead9651870e"
+    }
+  },
+  "identity_excludes": [
+    "timestamps",
+    "absolute_local_paths",
+    "generated_validation_outputs"
+  ],
+  "schema_version": "d0-digest-manifest-v0.1",
+  "specification_sha256": "dd4f8c668ccc034f6fb66b75e10252694dd2efaacc858a36c5074aa3865c5cb3"
+}
