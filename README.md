@@ -10,9 +10,11 @@
 ## 当前状态
 
 **R0 — Documentation and workspace baseline** 已通过。**R1 — Qwen /
-ModelScope / A100 feasibility** 的本地代码与测试已准备好，但真实 A100 双进程
-smoke 尚未完成，因此 R1 当前仍是 `REVISE`。现有 D0 代码和 artifacts 仅是
-v28 provenance，不代表 v29 实验结果。
+ModelScope / A100 feasibility** 已完成一次成本最小化的 A100 quick inference：
+固定 Qwen revision 成功加载并输出 `QWEN_INFERENCE_OK`。这证明基础推理可行，
+但真实双进程、完整权重 digest、16K context 和 frozen-config rerun 尚未完成，
+因此正式 R1 仍是 `REVISE`。现有 D0 代码和 artifacts 仅是 v28 provenance，
+不代表 v29 实验结果。
 
 ## 先读什么
 

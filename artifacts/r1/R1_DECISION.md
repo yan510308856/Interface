@@ -6,36 +6,69 @@ artifact:
   - experiment/configs/model.yaml
   - experiment/model_runtime.py
   - experiment/tests/test_model_config.py
+  - scripts/prefetch_model_colab.py
   - scripts/smoke_model_colab.py
   - artifacts/r1/R1_DECISION.md
+  - external: /content/drive/MyDrive/Interface-R1/prefetch_manifest.json
+  - external: /content/drive/MyDrive/Interface-R1/quick_inference.json
 decision: revise
-host: local (preparation only); colab-a100 evidence pending
-code_commit: working tree on r1-modelscope-a100; exact commit will be recorded before A100 execution
-environment: local Python 3.9.6; real package/CUDA/GPU versions pending Colab capture
+host: local preparation; Colab CPU prefetch; Colab A100 quick inference
+code_commit_used_on_colab: cd4d050d246a9a257d87faa846230a72e96c8183
+environment: NVIDIA A100-SXM4-80GB (81920 MiB), driver 580.82.07, reported CUDA 13.0; exact Colab/Python/PyTorch identity not frozen
 validation:
-  - PYTHONDONTWRITEBYTECODE=1 python3 -m unittest experiment.tests.test_model_config: exit 0, 11 tests
+  - PYTHONDONTWRITEBYTECODE=1 python3 -m unittest experiment.tests.test_model_config: exit 0, 13 tests
   - python3 scripts/smoke_model_colab.py --config experiment/configs/model.yaml --dry-run --process-count 2: exit 0, DRY_RUN_OK
   - python3 scripts/check_repository.py: exit 0
-  - PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s experiment/tests -p 'test_*.py': exit 0, 17 tests
+  - PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s experiment/tests -p 'test_*.py': exit 0, 19 tests
   - git diff --check: exit 0
+  - Colab CPU prefetch: completed, approximately 57 GiB cached on Google Drive, supporting manifest generated
+  - Colab A100 quick inference: PASS, exact output QWEN_INFERENCE_OK
 cloud_sync:
-  github: not pushed; branch under local review
-  google_drive: not applicable until real A100 bundles exist
+  github: r1-modelscope-a100 pushed through cd4d050d246a9a257d87faa846230a72e96c8183
+  google_drive: prefetch manifest, ModelScope cache, and quick-inference JSON retained privately
 open_risks:
-  - ModelScope master ref has not yet been resolved to an immutable commit on A100.
-  - The unquantized BF16 checkpoint requires an 80 GB-class A100; a 40 GB A100 is expected to produce REVISE without offload.
-  - Two separate real processes, full-context probe, weight digests, and GPU metrics are not yet recorded.
-next_stage: R1 Colab A100 execution; do not start R2
+  - The resolved model/tokenizer revision and exact Colab runtime are not frozen in tracked model.yaml.
+  - Full snapshot SHA-256 hashing was intentionally interrupted to minimize A100 cost.
+  - The three fixed R1 prompts and 16,384-token context probe were not completed as a formal attempt.
+  - Two separate real worker processes and their identity comparison were not completed.
+  - No complete frozen-config rerun exists, so the protocol's R1 exit criteria are unmet.
+next_stage: stop if only basic Qwen inference was required; otherwise complete formal R1 before R2
 ```
 
 Local source SHA-256 values before the A100 run:
 
 ```text
 experiment/configs/model.yaml          e314089d64ae8daae8e699f456aeb68e6e987b500368c9f359de3899650b8671
-experiment/model_runtime.py            3548256dfacbab497860012dc18c3ff96386d0ae87b084c1fb4f6e036cd3b955
-experiment/tests/test_model_config.py  5625da3c91eaa04fb488cb3eeeafb946c2451fc54437ad2defc5212532f291fe
-scripts/smoke_model_colab.py           eeceacc74f4b3b5f2bc7a67553bcf921de1406323cdc11f60685863956bca5f5
+experiment/model_runtime.py            a299535e77cfe5556bda68f344550a46901918652bf9efc0256af95f7f60308c
+experiment/tests/test_model_config.py  56692d53d12868170f1e8b2654598423dfd009302d5ff77e4b5ed66021dae600
+scripts/smoke_model_colab.py           50e5d04d406d825120ece574e8211dd8184d5b18d6a5fdea9c3c1fc48ce44d70
+scripts/prefetch_model_colab.py        d69f50ead8d279d7e445bb1e05cea811f8fecf1db318be17354e22605f446733
 ```
+
+## Colab quick-inference observation
+
+The user completed a cost-minimized A100 check after a CPU prefetch to Google
+Drive. This observation is useful evidence that the selected checkpoint can load
+and produce a short response, but it deliberately bypasses the formal R1 digest,
+full-context, and two-process requirements.
+
+```text
+result: PASS
+evidence_role: quick_inference_only
+model_id: Qwen/Qwen3-Coder-30B-A3B-Instruct
+resolved_revision: 5ea29678865934640d71cfece1aedfa1e84599a4
+prompt: Reply with exactly QWEN_INFERENCE_OK.
+output: QWEN_INFERENCE_OK
+load_seconds: 318.30028647899985
+generation_seconds: 2.151317279000068
+peak_gpu_memory_gib: 57.66936111450195
+external_result: /content/drive/MyDrive/Interface-R1/quick_inference.json
+external_result_size: 333 bytes
+```
+
+The original JSON remains on the user's private Google Drive and was not copied
+into Git. These values were transcribed from the user-provided terminal output;
+they are not a substitute for a complete runner-produced R1 attempt bundle.
 
 ## What the local implementation establishes
 
@@ -49,7 +82,7 @@ config/tokenizer files, and loads the model onto `cuda:0` with BF16. CPU offload
 disk offload, quantization, multiple GPUs, non-A100 devices, and insufficient GPU or
 cache storage are controlled failures.
 
-## Colab A100 commands
+## Formal Colab A100 commands (optional only if formal R1 is still required)
 
 From the Colab-connected terminal, first confirm that the terminal itself sees the
 GPU and repository:

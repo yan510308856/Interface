@@ -5,8 +5,11 @@ This directory is being migrated stage by stage to the R0–R8 protocol in
 the next unstarted gate.
 
 Current gate: **R1 — Qwen / ModelScope / A100 feasibility (`REVISE`)**.
-The local config, runtime, CLI, and offline tests are ready; two successful real
-A100 processes and a frozen resolved revision are still required.
+The local config, runtime, CLI, and offline tests are ready. A cost-minimized A100
+quick inference loaded the fixed Qwen checkpoint and produced the expected short
+response, but this is supporting evidence only. Two successful real A100 processes,
+full snapshot digests, the 16K context probe, and a frozen resolved revision are
+still required for the formal gate.
 
 The files still carrying D0 names or v28 semantics are preserved as historical
 evidence until their assigned R-stage replacements exist. Their exact disposition
