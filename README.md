@@ -9,12 +9,12 @@
 
 ## 当前状态
 
-**R0 — Documentation and workspace baseline** 已通过。**R1 — Qwen /
-ModelScope / A100 feasibility** 已完成一次成本最小化的 A100 quick inference：
-固定 Qwen revision 成功加载并输出 `QWEN_INFERENCE_OK`。这证明基础推理可行，
-但真实双进程、完整权重 digest、16K context 和 frozen-config rerun 尚未完成，
-因此正式 R1 仍是 `REVISE`。现有 D0 代码和 artifacts 仅是 v28 provenance，
-不代表 v29 实验结果。
+**R0 — Documentation and workspace baseline** 与 **R1 — Qwen / ModelScope /
+A100 feasibility** 已通过。R1 的冻结配置在两个独立 A100 worker 中完成三个
+固定 prompt、语法解析和 16,384-token context probe，模型 revision、snapshot
+digest、输入 token IDs 与 runtime identity 一致。当前进入 **R2 — Clean task
+feasibility and task manifest freeze**。现有 D0 代码和 artifacts 仅是 v28
+provenance，不代表 v29 实验结果。
 
 ## 先读什么
 
@@ -52,8 +52,8 @@ python3 scripts/smoke_model_colab.py \
   --process-count 2
 ```
 
-CPU Colab 可先把固定 ModelScope snapshot 下载到 Google Drive；这只是持久化
-cache，不构成 R1 通过证据：
+如需重放 R1，CPU Colab 可先把固定 ModelScope snapshot 下载到 Google Drive；
+cache 只用于加速，不构成独立的通过证据：
 
 ```bash
 python3 -m pip install -r requirements.txt
@@ -66,9 +66,7 @@ python3 scripts/prefetch_model_colab.py \
 `requirements.txt` 固定 R1 的用户空间依赖；不要重装 Colab 自带的 PyTorch，
 正式运行会记录并冻结实际 Torch/CUDA runtime。
 
-正式 R1 仍须在 A100 上重新验证 revision、文件 digest、加载、生成与显存指标。
-
-R1 的真实命令、依赖版本和两阶段 freeze 流程见
+R1 的命令、冻结依赖、模型身份与正式通过证据摘要见
 [`artifacts/r1/R1_DECISION.md`](artifacts/r1/R1_DECISION.md)。脚本拒绝覆盖已有
 attempt；每次重跑必须使用新的 run directory。
 

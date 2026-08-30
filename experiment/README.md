@@ -1,15 +1,14 @@
 # Experiment implementation
 
 This directory is being migrated stage by stage to the R0–R8 protocol in
-[`docs/aug29experiment.md`](../docs/aug29experiment.md). R0 is complete; R1 is
-the next unstarted gate.
+[`docs/aug29experiment.md`](../docs/aug29experiment.md). R0 and R1 are complete;
+R2 is the current gate.
 
-Current gate: **R1 — Qwen / ModelScope / A100 feasibility (`REVISE`)**.
-The local config, runtime, CLI, and offline tests are ready. A cost-minimized A100
-quick inference loaded the fixed Qwen checkpoint and produced the expected short
-response, but this is supporting evidence only. Two successful real A100 processes,
-full snapshot digests, the 16K context probe, and a frozen resolved revision are
-still required for the formal gate.
+Current gate: **R2 — Clean task feasibility and task manifest freeze**.
+R1 passed with a frozen ModelScope revision and runtime after two independent A100
+workers completed all three fixed prompts and the 16K context probe. The private
+raw bundle remains on Google Drive; the tracked decision and digests are in
+[`artifacts/r1/R1_DECISION.md`](../artifacts/r1/R1_DECISION.md).
 
 The files still carrying D0 names or v28 semantics are preserved as historical
 evidence until their assigned R-stage replacements exist. Their exact disposition
