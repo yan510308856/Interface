@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_PATHS = (
     "AGENTS.md",
     "README.md",
+    "requirements.txt",
     "docs/interface29.md",
     "docs/aug29experiment.md",
     "docs/archive/interface28.md",

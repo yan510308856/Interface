@@ -6,6 +6,7 @@ artifact:
   - experiment/configs/model.yaml
   - experiment/model_runtime.py
   - experiment/tests/test_model_config.py
+  - requirements.txt
   - scripts/prefetch_model_colab.py
   - scripts/smoke_model_colab.py
   - artifacts/r1/R1_DECISION.md
@@ -16,10 +17,10 @@ host: local preparation; Colab CPU prefetch; Colab A100 quick inference
 code_commit_used_on_colab: cd4d050d246a9a257d87faa846230a72e96c8183
 environment: NVIDIA A100-SXM4-80GB (81920 MiB), driver 580.82.07, reported CUDA 13.0; exact Colab/Python/PyTorch identity not frozen
 validation:
-  - PYTHONDONTWRITEBYTECODE=1 python3 -m unittest experiment.tests.test_model_config: exit 0, 13 tests
+  - PYTHONDONTWRITEBYTECODE=1 python3 -m unittest experiment.tests.test_model_config: exit 0, 14 tests
   - python3 scripts/smoke_model_colab.py --config experiment/configs/model.yaml --dry-run --process-count 2: exit 0, DRY_RUN_OK
   - python3 scripts/check_repository.py: exit 0
-  - PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s experiment/tests -p 'test_*.py': exit 0, 19 tests
+  - PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s experiment/tests -p 'test_*.py': exit 0, 20 tests
   - git diff --check: exit 0
   - Colab CPU prefetch: completed, approximately 57 GiB cached on Google Drive, supporting manifest generated
   - Colab A100 quick inference: PASS, exact output QWEN_INFERENCE_OK
@@ -35,14 +36,16 @@ open_risks:
 next_stage: stop if only basic Qwen inference was required; otherwise complete formal R1 before R2
 ```
 
-Local source SHA-256 values before the A100 run:
+Tracked R1 source SHA-256 values after the dependency-manifest update:
 
 ```text
 experiment/configs/model.yaml          e314089d64ae8daae8e699f456aeb68e6e987b500368c9f359de3899650b8671
 experiment/model_runtime.py            a299535e77cfe5556bda68f344550a46901918652bf9efc0256af95f7f60308c
-experiment/tests/test_model_config.py  56692d53d12868170f1e8b2654598423dfd009302d5ff77e4b5ed66021dae600
+experiment/tests/test_model_config.py  99a86a55b4eec0d9d46dfdf0d632f559778f6bff47f70d4b32a2ea58e2973e53
 scripts/smoke_model_colab.py           50e5d04d406d825120ece574e8211dd8184d5b18d6a5fdea9c3c1fc48ce44d70
 scripts/prefetch_model_colab.py        d69f50ead8d279d7e445bb1e05cea811f8fecf1db318be17354e22605f446733
+scripts/check_repository.py            a77b17ffc550cc391d4313f95db65d64a44352d90c2db9fd1e4163a8be0a9a08
+requirements.txt                       3563dcbcf5a78f968a3e8585c8f6282095ce49ff69af3ae94d23a9bac2b10d1f
 ```
 
 ## Colab quick-inference observation
@@ -96,11 +99,7 @@ Install the pinned R1 user-space packages. PyTorch comes from the selected Colab
 runtime and is recorded rather than replaced:
 
 ```bash
-python3 -m pip install \
-  "modelscope==1.39.1" \
-  "modelscope-hub==0.2.0" \
-  "transformers==5.16.1" \
-  "accelerate==1.14.0"
+python3 -m pip install -r requirements.txt
 ```
 
 Run the first two-process smoke from a clean committed checkout:

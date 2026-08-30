@@ -23,6 +23,7 @@ import smoke_model_colab  # noqa: E402
 
 
 CONFIG_PATH = ROOT / "experiment/configs/model.yaml"
+REQUIREMENTS_PATH = ROOT / "requirements.txt"
 
 
 class BrokenRuntime:
@@ -48,6 +49,20 @@ class R1ModelConfigTests(unittest.TestCase):
         self.assertIsNone(self.config["resolved_revision"])
         self.assertFalse(self.config["engine"]["allow_cpu_offload"])
         self.assertFalse(self.config["engine"]["allow_disk_offload"])
+
+    def test_requirements_match_config_without_replacing_colab_torch(self):
+        actual = {
+            line.strip()
+            for line in REQUIREMENTS_PATH.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+        expected = {
+            f"{package}=={version}"
+            for package, version in self.config["packages"].items()
+            if package != "torch"
+        }
+        self.assertEqual(expected, actual)
+        self.assertFalse(any(line.startswith("torch") for line in actual))
 
     def test_config_rejects_wrong_provider_and_partial_revision(self):
         wrong_provider = copy.deepcopy(self.config)

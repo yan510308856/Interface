@@ -56,12 +56,15 @@ CPU Colab 可先把固定 ModelScope snapshot 下载到 Google Drive；这只是
 cache，不构成 R1 通过证据：
 
 ```bash
-python3 -m pip install "modelscope==1.39.1" "modelscope-hub==0.2.0"
+python3 -m pip install -r requirements.txt
 
 python3 scripts/prefetch_model_colab.py \
   --config experiment/configs/model.yaml \
   --cache-dir /content/drive/MyDrive/Interface-R1/modelscope-cache
 ```
+
+`requirements.txt` 固定 R1 的用户空间依赖；不要重装 Colab 自带的 PyTorch，
+正式运行会记录并冻结实际 Torch/CUDA runtime。
 
 正式 R1 仍须在 A100 上重新验证 revision、文件 digest、加载、生成与显存指标。
 
