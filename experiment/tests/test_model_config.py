@@ -138,6 +138,21 @@ class R1ModelConfigTests(unittest.TestCase):
             rows = (attempt / "generations.jsonl").read_text().splitlines()
             self.assertEqual(3, len(rows))
             self.assertTrue(all(json.loads(row)["parse"]["ok"] for row in rows))
+            stdout = (attempt / "stdout.log").read_text()
+            self.assertIn("attempt-00 started", stdout)
+            self.assertIn("prompt 1/3 (plain)", stdout)
+            self.assertIn("context probe complete", stdout)
+            self.assertIn("validation=PASS_LOCAL_ONLY", stdout)
+
+    def test_heartbeat_reports_start_and_finish(self):
+        with mock.patch("experiment.model_runtime._progress") as report:
+            with model_runtime._heartbeat(
+                "test operation", lambda: "units=3", interval_seconds=0.001
+            ):
+                pass
+        messages = [call.args[0] for call in report.call_args_list]
+        self.assertTrue(any("started" in message for message in messages))
+        self.assertTrue(any("finished" in message for message in messages))
 
     def test_failure_still_writes_complete_attempt_bundle(self):
         with tempfile.TemporaryDirectory() as temporary:

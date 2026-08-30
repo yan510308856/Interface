@@ -9,15 +9,19 @@ standard library.
 from __future__ import annotations
 
 import ast
+import contextlib
 import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
+import sys
+import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
 
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
@@ -56,6 +60,59 @@ _ACTIVE: dict[str, Any] | None = None
 
 class ConfigError(ValueError):
     """Raised when the frozen model config is incomplete or inconsistent."""
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _progress(message: str) -> None:
+    print(f"[{_utc_now()}] [R1] {message}", file=sys.stdout, flush=True)
+
+
+def _format_gib(byte_count: int) -> str:
+    return f"{byte_count / (1024 ** 3):.2f} GiB"
+
+
+def _directory_size(path: Path) -> int:
+    if not path.exists():
+        return 0
+    total = 0
+    for candidate in path.rglob("*"):
+        try:
+            if candidate.is_file():
+                total += candidate.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+@contextlib.contextmanager
+def _heartbeat(
+    label: str,
+    details: Callable[[], str],
+    *,
+    interval_seconds: float = 30.0,
+) -> Iterator[None]:
+    """Emit progress for blocking third-party calls that may otherwise be silent."""
+    started = time.monotonic()
+    stopped = threading.Event()
+    _progress(f"{label} started; {details()}")
+
+    def report() -> None:
+        while not stopped.wait(interval_seconds):
+            elapsed = int(time.monotonic() - started)
+            _progress(f"{label} still running; elapsed={elapsed}s; {details()}")
+
+    reporter = threading.Thread(target=report, name="r1-progress", daemon=True)
+    reporter.start()
+    try:
+        yield
+    finally:
+        stopped.set()
+        reporter.join(timeout=1)
+        elapsed = time.monotonic() - started
+        _progress(f"{label} finished; elapsed={elapsed:.1f}s; {details()}")
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
@@ -183,6 +240,7 @@ def resolve_modelscope_revision(config: Mapping[str, Any]) -> str:
     resolved = config.get("resolved_revision")
     if isinstance(resolved, str) and SHA40.fullmatch(resolved):
         return resolved
+    _progress(f"resolving immutable ModelScope revision for {config['model_id']}")
     completed = subprocess.run(
         ["git", "ls-remote", config["repository_url"], config["requested_revision"]],
         check=False,
@@ -255,21 +313,31 @@ def digest_snapshot(snapshot: str | Path) -> dict[str, Any]:
         raise RuntimeError("downloaded snapshot has no safetensors weight shards")
     started = time.monotonic()
     entries = []
-    for path in files:
+    total_bytes = sum(path.stat().st_size for path in files)
+    _progress(
+        f"snapshot hashing started; files={len(files)}, total={_format_gib(total_bytes)}"
+    )
+    for index, path in enumerate(files, start=1):
+        size = path.stat().st_size
+        _progress(
+            f"hashing file {index}/{len(files)}: {path.name} ({_format_gib(size)})"
+        )
         entries.append(
             {
                 "path": path.relative_to(root).as_posix(),
-                "bytes": path.stat().st_size,
+                "bytes": size,
                 "sha256": _sha256_file(path),
             }
         )
     identity = "".join(f"{item['path']}\0{item['bytes']}\0{item['sha256']}\n" for item in entries)
-    return {
+    result = {
         "algorithm": "sha256",
         "files": entries,
         "snapshot_sha256": hashlib.sha256(identity.encode("utf-8")).hexdigest(),
         "digest_seconds": round(time.monotonic() - started, 6),
     }
+    _progress(f"snapshot hashing finished; seconds={result['digest_seconds']}")
+    return result
 
 
 def load_model(config: Mapping[str, Any]) -> dict[str, Any]:
@@ -284,38 +352,61 @@ def load_model(config: Mapping[str, Any]) -> dict[str, Any]:
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     hardware = _check_hardware(config, torch)
+    _progress(
+        f"hardware accepted: {hardware['gpu_name']}, "
+        f"GPU={hardware['gpu_total_memory_mib']} MiB, "
+        f"cache_free={hardware['cache_disk_free_mib_before_download']} MiB"
+    )
     torch.manual_seed(config["seed"])
     torch.cuda.manual_seed_all(config["seed"])
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats(0)
 
     revision = resolve_modelscope_revision(config)
+    _progress(f"resolved ModelScope revision: {revision}")
+    cache_path = Path(_cache_dir(config) or Path.home()).expanduser()
+
+    def download_details() -> str:
+        usage = shutil.disk_usage(cache_path)
+        return (
+            f"cache={_format_gib(_directory_size(cache_path))}, "
+            f"disk_free={_format_gib(usage.free)}"
+        )
+
     download_started = time.monotonic()
-    snapshot = snapshot_download(
-        model_id=config["model_id"],
-        revision=revision,
-        cache_dir=_cache_dir(config),
-    )
+    with _heartbeat("ModelScope snapshot download", download_details):
+        snapshot = snapshot_download(
+            model_id=config["model_id"],
+            revision=revision,
+            cache_dir=_cache_dir(config),
+        )
     download_seconds = time.monotonic() - download_started
     snapshot_digests = digest_snapshot(snapshot)
 
+    def load_details() -> str:
+        return (
+            f"GPU allocated={torch.cuda.memory_allocated(0) / (1024 ** 3):.2f} GiB, "
+            f"reserved={torch.cuda.memory_reserved(0) / (1024 ** 3):.2f} GiB"
+        )
+
     load_started = time.monotonic()
-    tokenizer = AutoTokenizer.from_pretrained(
-        snapshot,
-        local_files_only=True,
-        trust_remote_code=False,
-    )
-    model = AutoModelForCausalLM.from_pretrained(
-        snapshot,
-        local_files_only=True,
-        trust_remote_code=False,
-        dtype=torch.bfloat16,
-        device_map={"": 0},
-        low_cpu_mem_usage=True,
-        attn_implementation=config["engine"]["attention_implementation"],
-    )
-    model.eval()
-    torch.cuda.synchronize()
+    with _heartbeat("tokenizer and BF16 model load", load_details):
+        tokenizer = AutoTokenizer.from_pretrained(
+            snapshot,
+            local_files_only=True,
+            trust_remote_code=False,
+        )
+        model = AutoModelForCausalLM.from_pretrained(
+            snapshot,
+            local_files_only=True,
+            trust_remote_code=False,
+            dtype=torch.bfloat16,
+            device_map={"": 0},
+            low_cpu_mem_usage=True,
+            attn_implementation=config["engine"]["attention_implementation"],
+        )
+        model.eval()
+        torch.cuda.synchronize()
     load_seconds = time.monotonic() - load_started
 
     placements = sorted({str(parameter.device) for parameter in model.parameters()})

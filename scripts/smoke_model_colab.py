@@ -39,6 +39,33 @@ PACKAGE_IMPORT_NAMES = {
 }
 
 
+class TeeTextIO:
+    """Mirror worker output to the live terminal and the attempt log."""
+
+    def __init__(self, terminal: Any, log_file: Any) -> None:
+        self.terminal = terminal
+        self.log_file = log_file
+
+    def write(self, text: str) -> int:
+        self.terminal.write(text)
+        self.log_file.write(text)
+        self.flush()
+        return len(text)
+
+    def flush(self) -> None:
+        self.terminal.flush()
+        self.log_file.flush()
+
+    def isatty(self) -> bool:
+        return bool(getattr(self.terminal, "isatty", lambda: False)())
+
+
+def progress(message: str, *, stream: Any | None = None) -> None:
+    """Print one timestamped, immediately flushed R1 progress line."""
+    destination = stream or sys.stdout
+    print(f"[{utc_now()}] [R1] {message}", file=destination, flush=True)
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -419,8 +446,11 @@ def run_attempt(
     selected_runtime = runtime or (FakeRuntime() if runtime_mode == "fake" else model_runtime)
 
     with stdout_path.open("w", encoding="utf-8") as stdout_handle, stderr_path.open("w", encoding="utf-8") as stderr_handle:
-        with contextlib.redirect_stdout(stdout_handle), contextlib.redirect_stderr(stderr_handle):
+        live_stdout = TeeTextIO(sys.stdout, stdout_handle)
+        live_stderr = TeeTextIO(sys.stderr, stderr_handle)
+        with contextlib.redirect_stdout(live_stdout), contextlib.redirect_stderr(live_stderr):
             try:
+                progress(f"{attempt_id} started; collecting and validating environment")
                 if runtime_mode == "real":
                     if not git.get("commit") or not git.get("worktree_clean_at_start"):
                         raise RuntimeError(
@@ -428,8 +458,14 @@ def run_attempt(
                         )
                     validate_package_versions(config, environment["packages"])
                     validate_runtime_identity(config, environment["runtime_identity"])
+                progress(f"{attempt_id}: environment valid; starting model download/load")
                 selected_runtime.load_model(config)
-                for prompt in config["prompts"]:
+                progress(f"{attempt_id}: model ready; running {len(config['prompts'])} fixed prompts")
+                for index, prompt in enumerate(config["prompts"], start=1):
+                    progress(
+                        f"{attempt_id}: prompt {index}/{len(config['prompts'])} "
+                        f"({prompt['id']})"
+                    )
                     result = selected_runtime.generate(prompt["messages"], config)
                     parsed = selected_runtime.parse_output(prompt["parser"], result["text"])
                     generation_rows.append(
@@ -440,18 +476,28 @@ def run_attempt(
                             "parse": parsed,
                         }
                     )
+                    progress(
+                        f"{attempt_id}: prompt {prompt['id']} complete; "
+                        f"output_tokens={result['output_tokens']}, "
+                        f"seconds={result['generation_seconds']}"
+                    )
+                progress(
+                    f"{attempt_id}: starting full {config['context_limit']}-token context probe"
+                )
                 selected_runtime.run_context_probe(config)
+                progress(f"{attempt_id}: context probe complete; collecting metrics")
                 metrics = selected_runtime.collect_metrics()
                 metrics["generations"] = generation_rows
                 validation = _validation(config, runtime_mode, environment, metrics, generation_rows)
                 exit_code = 0 if validation["overall"] in {"PASS", "PASS_LOCAL_ONLY"} else 1
+                progress(f"{attempt_id}: validation={validation['overall']}")
             except Exception as exc:
                 error = {
                     "class": type(exc).__name__,
                     "message": redact(str(exc)),
                     "traceback": redact(traceback.format_exc()),
                 }
-                print(error["traceback"], file=stderr_handle)
+                print(error["traceback"], file=sys.stderr, flush=True)
                 validation = {
                     "schema_version": "r1-attempt-validation-v1",
                     "overall": "REVISE",
@@ -462,7 +508,7 @@ def run_attempt(
                 try:
                     selected_runtime.release_model()
                 except Exception as release_exc:
-                    print(f"release warning: {redact(str(release_exc))}", file=stderr_handle)
+                    print(f"release warning: {redact(str(release_exc))}", file=sys.stderr, flush=True)
 
     manifest.update(
         {
@@ -575,6 +621,10 @@ def run_workers(args: argparse.Namespace, config: Mapping[str, Any]) -> int:
         )
         return 2
     for attempt in attempts:
+        progress(
+            f"launching worker {attempt} ({attempts.index(attempt) + 1}/{len(attempts)}); "
+            "worker output is mirrored to its attempt logs"
+        )
         command = [
             sys.executable,
             str(Path(__file__).resolve()),
@@ -589,6 +639,7 @@ def run_workers(args: argparse.Namespace, config: Mapping[str, Any]) -> int:
             "--worker",
         ]
         completed = subprocess.run(command, cwd=ROOT, check=False)
+        progress(f"worker {attempt} exited with code {completed.returncode}")
         if completed.returncode != 0:
             print(f"worker {attempt} failed; preserved its bundle", file=sys.stderr)
     summary, candidate = compare_attempts(config, args.output_dir, attempts)
