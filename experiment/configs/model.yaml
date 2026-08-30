@@ -4,9 +4,9 @@
   "model_id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
   "repository_url": "https://www.modelscope.cn/Qwen/Qwen3-Coder-30B-A3B-Instruct.git",
   "requested_revision": "refs/heads/master",
-  "resolved_revision": null,
-  "tokenizer_revision": null,
-  "freeze_status": "pending_a100",
+  "resolved_revision": "5ea29678865934640d71cfece1aedfa1e84599a4",
+  "tokenizer_revision": "5ea29678865934640d71cfece1aedfa1e84599a4",
+  "freeze_status": "frozen",
   "engine": {
     "name": "transformers",
     "version": "5.16.1",
@@ -25,16 +25,16 @@
     "modelscope-hub": "0.2.0",
     "transformers": "5.16.1",
     "accelerate": "1.14.0",
-    "torch": "record-from-colab-runtime"
+    "torch": "2.11.0+cu128"
   },
   "runtime": {
-    "colab_release": "record-from-colab-runtime",
-    "python": "record-from-colab-runtime",
-    "torch": "record-from-colab-runtime",
-    "cuda_runtime": "record-from-colab-runtime",
-    "nvidia_driver": "record-from-colab-runtime",
-    "gpu_name": "record-from-colab-runtime",
-    "gpu_memory_mib": "record-from-colab-runtime"
+    "colab_release": "release-colab-external-images_20260827-060052_RC00",
+    "python": "3.13.15",
+    "torch": "2.11.0+cu128",
+    "cuda_runtime": "12.8",
+    "nvidia_driver": "580.82.07",
+    "gpu_name": "NVIDIA A100-SXM4-80GB",
+    "gpu_memory_mib": 81920
   },
   "context_limit": 16384,
   "max_output_tokens": 128,
@@ -59,6 +59,11 @@
     "environment_variable": "R1_MODELSCOPE_CACHE",
     "default": "modelscope-client-default",
     "identity_role": "performance-only; snapshot identity comes from revision and digests"
+  },
+  "candidate_evidence": {
+    "run_id": "qwen-a100-formal-discovery-01",
+    "attempts": ["attempt-00", "attempt-01"],
+    "snapshot_sha256": "b408027c9c3351245a516347d656c7a1c56d55fcdd65e040adbad322104a9c05"
   },
   "prompts": [
     {

@@ -42,11 +42,30 @@ class R1ModelConfigTests(unittest.TestCase):
     def setUp(self):
         self.config = model_runtime.load_config(CONFIG_PATH)
 
-    def test_pending_config_is_explicit_and_modelscope_only(self):
+    def pending_config(self):
+        pending = copy.deepcopy(self.config)
+        pending["resolved_revision"] = None
+        pending["tokenizer_revision"] = None
+        pending["freeze_status"] = "pending_a100"
+        pending["packages"]["torch"] = "record-from-colab-runtime"
+        pending["runtime"] = {
+            key: "record-from-colab-runtime" for key in pending["runtime"]
+        }
+        pending.pop("candidate_evidence", None)
+        model_runtime.validate_config(pending)
+        return pending
+
+    def test_frozen_config_is_explicit_and_modelscope_only(self):
         self.assertEqual("modelscope", self.config["provider"])
         self.assertEqual("Qwen/Qwen3-Coder-30B-A3B-Instruct", self.config["model_id"])
-        self.assertEqual("pending_a100", self.config["freeze_status"])
-        self.assertIsNone(self.config["resolved_revision"])
+        self.assertEqual("frozen", self.config["freeze_status"])
+        self.assertEqual(
+            "5ea29678865934640d71cfece1aedfa1e84599a4",
+            self.config["resolved_revision"],
+        )
+        self.assertEqual(
+            self.config["resolved_revision"], self.config["tokenizer_revision"]
+        )
         self.assertFalse(self.config["engine"]["allow_cpu_offload"])
         self.assertFalse(self.config["engine"]["allow_disk_offload"])
 
@@ -71,15 +90,18 @@ class R1ModelConfigTests(unittest.TestCase):
             model_runtime.validate_config(wrong_provider)
 
         partial = copy.deepcopy(self.config)
-        partial["resolved_revision"] = "a" * 40
+        partial["tokenizer_revision"] = None
         with self.assertRaises(model_runtime.ConfigError):
             model_runtime.validate_config(partial)
 
+        different = copy.deepcopy(self.config)
+        different["tokenizer_revision"] = "a" * 40
+        with self.assertRaises(model_runtime.ConfigError):
+            model_runtime.validate_config(different)
+
     def test_frozen_config_requires_exact_torch_version(self):
         frozen = copy.deepcopy(self.config)
-        frozen["resolved_revision"] = "a" * 40
-        frozen["tokenizer_revision"] = "a" * 40
-        frozen["freeze_status"] = "frozen"
+        frozen["packages"]["torch"] = "record-from-colab-runtime"
         with self.assertRaises(model_runtime.ConfigError):
             model_runtime.validate_config(frozen)
         frozen["packages"]["torch"] = "2.9.0+cu128"
@@ -116,15 +138,16 @@ class R1ModelConfigTests(unittest.TestCase):
 
     @mock.patch("experiment.model_runtime.subprocess.run")
     def test_modelscope_ref_is_resolved_to_full_commit(self, run):
+        pending = self.pending_config()
         run.return_value = mock.Mock(
             returncode=0,
             stdout=f"{'b' * 40}\trefs/heads/master\n",
             stderr="",
         )
-        self.assertEqual("b" * 40, model_runtime.resolve_modelscope_revision(self.config))
+        self.assertEqual("b" * 40, model_runtime.resolve_modelscope_revision(pending))
         command = run.call_args.args[0]
         self.assertEqual("git", command[0])
-        self.assertEqual(self.config["repository_url"], command[2])
+        self.assertEqual(pending["repository_url"], command[2])
 
     def test_fake_attempt_writes_complete_success_bundle(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -172,6 +195,7 @@ class R1ModelConfigTests(unittest.TestCase):
 
     def test_cpu_prefetch_uses_resolved_revision_without_gpu(self):
         with tempfile.TemporaryDirectory() as temporary:
+            pending = self.pending_config()
             cache = Path(temporary) / "cache"
             snapshot = cache / "snapshot"
 
@@ -182,7 +206,7 @@ class R1ModelConfigTests(unittest.TestCase):
                 (snapshot / "model.safetensors").write_bytes(b"weights")
                 return str(snapshot)
 
-            environment_name = self.config["cache_policy"]["environment_variable"]
+            environment_name = pending["cache_policy"]["environment_variable"]
             with (
                 mock.patch.dict(os.environ, {environment_name: str(cache)}),
                 mock.patch.object(
@@ -190,7 +214,7 @@ class R1ModelConfigTests(unittest.TestCase):
                 ),
             ):
                 result = model_runtime.prefetch_snapshot(
-                    self.config, downloader=fake_download
+                    pending, downloader=fake_download
                 )
             self.assertEqual("b" * 40, result["resolved_revision"])
             self.assertEqual(snapshot.resolve(), Path(result["snapshot_path"]))
@@ -220,38 +244,31 @@ class R1ModelConfigTests(unittest.TestCase):
             smoke_model_colab.increment_attempt("attempt", 1)
 
     def test_runtime_identity_must_be_complete_and_match_when_frozen(self):
-        actual = {
-            "colab_release": "2026.08",
-            "python": "3.12.11",
-            "torch": "2.9.0",
-            "cuda_runtime": "12.8",
-            "nvidia_driver": "570.00",
-            "gpu_name": "NVIDIA A100-SXM4-80GB",
-            "gpu_memory_mib": 81920,
-        }
+        actual = dict(self.config["runtime"])
         smoke_model_colab.validate_runtime_identity(self.config, actual)
         incomplete = dict(actual)
         incomplete["colab_release"] = None
         with self.assertRaises(RuntimeError):
             smoke_model_colab.validate_runtime_identity(self.config, incomplete)
 
-        frozen = copy.deepcopy(self.config)
-        frozen["freeze_status"] = "frozen"
-        frozen["runtime"] = actual
-        smoke_model_colab.validate_runtime_identity(frozen, actual)
         changed = dict(actual)
         changed["nvidia_driver"] = "different"
         with self.assertRaises(RuntimeError):
-            smoke_model_colab.validate_runtime_identity(frozen, changed)
+            smoke_model_colab.validate_runtime_identity(self.config, changed)
+
+        smoke_model_colab.validate_runtime_identity(self.pending_config(), changed)
 
     def test_two_fake_process_bundles_propose_but_do_not_freeze_config(self):
         with tempfile.TemporaryDirectory() as temporary:
+            pending = self.pending_config()
+            pending_path = Path(temporary) / "pending-model.json"
+            pending_path.write_text(json.dumps(pending), encoding="utf-8")
             output = Path(temporary) / "run"
             for attempt in ("attempt-00", "attempt-01"):
                 self.assertEqual(
                     0,
                     smoke_model_colab.run_attempt(
-                        CONFIG_PATH,
+                        pending_path,
                         output,
                         attempt,
                         "fake",
@@ -259,7 +276,7 @@ class R1ModelConfigTests(unittest.TestCase):
                     ),
                 )
             summary, candidate = smoke_model_colab.compare_attempts(
-                self.config, output, ["attempt-00", "attempt-01"]
+                pending, output, ["attempt-00", "attempt-01"]
             )
             self.assertEqual("REVISE", summary["status"])
             self.assertIn("tracked_model_config_not_frozen", summary["blockers"])

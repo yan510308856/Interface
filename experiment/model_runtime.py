@@ -152,6 +152,8 @@ def validate_config(config: Mapping[str, Any]) -> None:
             raise ConfigError(f"{name} must be null before A100 or a full commit SHA")
     if (resolved is None) != (tokenizer_revision is None):
         raise ConfigError("model and tokenizer revisions must be frozen together")
+    if resolved is not None and resolved != tokenizer_revision:
+        raise ConfigError("model and tokenizer revisions must be identical")
     if resolved and resolved.lower() in FLOATING_REVISIONS:
         raise ConfigError("resolved revision cannot be floating")
     expected_freeze = "frozen" if resolved else "pending_a100"
