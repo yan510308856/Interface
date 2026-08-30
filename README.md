@@ -9,9 +9,12 @@
 
 ## 当前状态
 
-**R0 — Documentation and workspace baseline** 已完成迁移审计。当前可开始
-**R1 — Qwen / ModelScope / A100 feasibility**；R1 尚未执行或通过。现有 D0
-代码和 artifacts 仅是 v28 provenance，不代表 v29 实验结果。
+**R0 — Documentation and workspace baseline** 与 **R1 — Qwen / ModelScope /
+A100 feasibility** 已通过。R1 的冻结配置在两个独立 A100 worker 中完成三个
+固定 prompt、语法解析和 16,384-token context probe，模型 revision、snapshot
+digest、输入 token IDs 与 runtime identity 一致。当前进入 **R2 — Clean task
+feasibility and task manifest freeze**。现有 D0 代码和 artifacts 仅是 v28
+provenance，不代表 v29 实验结果。
 
 ## 先读什么
 
@@ -38,6 +41,34 @@ artifacts/     小型 stage decision/audit 可提交；大型构建与运行产�
 python3 scripts/check_repository.py
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s experiment/tests -p 'test_*.py'
 ```
+
+R1 本地预检（不下载模型、不需要 GPU）：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest experiment.tests.test_model_config
+python3 scripts/smoke_model_colab.py \
+  --config experiment/configs/model.yaml \
+  --dry-run \
+  --process-count 2
+```
+
+如需重放 R1，CPU Colab 可先把固定 ModelScope snapshot 下载到 Google Drive；
+cache 只用于加速，不构成独立的通过证据：
+
+```bash
+python3 -m pip install -r requirements.txt
+
+python3 scripts/prefetch_model_colab.py \
+  --config experiment/configs/model.yaml \
+  --cache-dir /content/drive/MyDrive/Interface-R1/modelscope-cache
+```
+
+`requirements.txt` 固定 R1 的用户空间依赖；不要重装 Colab 自带的 PyTorch，
+正式运行会记录并冻结实际 Torch/CUDA runtime。
+
+R1 的命令、冻结依赖、模型身份与正式通过证据摘要见
+[`artifacts/r1/R1_DECISION.md`](artifacts/r1/R1_DECISION.md)。脚本拒绝覆盖已有
+attempt；每次重跑必须使用新的 run directory。
 
 R0 的机器清单与结论见
 [`artifacts/r0/MIGRATION_AUDIT.md`](artifacts/r0/MIGRATION_AUDIT.md)。历史 D0

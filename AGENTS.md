@@ -18,7 +18,10 @@ If these documents conflict, stop and report the conflict before editing code.
 
 ## Current State
 
-- Current implementation stage: **R1 — Qwen / ModelScope / A100 feasibility**.
+- Current implementation stage: **R2 — Clean task feasibility and task manifest freeze**.
+- **R1 — Qwen / ModelScope / A100 feasibility** passed on 2026-08-30; its frozen
+  configuration and evidence summary are recorded in `artifacts/r1/R1_DECISION.md`,
+  while the complete private run bundle remains on Google Drive.
 - **R0 — Documentation and workspace baseline** passed on 2026-08-30; its
   migration audit and file-by-file disposition are recorded in `artifacts/r0/`.
 - The existing D0 implementation remains v28 evidence and must be migrated only
