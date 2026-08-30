@@ -1,0 +1,128 @@
+{
+  "schema_version": "demo-config-v0.1",
+  "experiment_id": "interface-demo-20260829",
+  "demo_id": "d0-single-task-four-cell",
+  "design": {
+    "repository_revision": "9309e8ade335d15a99031c58f146f9dc7bdf4585",
+    "sources": [
+      "docs/archive/interface28.md",
+      "docs/archive/aug28experiment.md"
+    ],
+    "factorial": {
+      "interface": ["atomic", "restricted_python"],
+      "environment": ["clean", "adversarial"]
+    }
+  },
+  "model": {
+    "provider": "huggingface",
+    "model_id": "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8",
+    "revision": "dcaee4d4dfc5ee71ad501f01f530e5652438fde0",
+    "tokenizer_revision": "dcaee4d4dfc5ee71ad501f01f530e5652438fde0",
+    "checkpoint_precision": "fp8",
+    "engine": "vllm",
+    "engine_version": "0.28.0",
+    "engine_sdist_sha256": "ac96dd0ec5be9c13f2aa4bfb50498c4727110406f6e4980b58a4097e4d18634a",
+    "engine_image": "docker.io/vllm/vllm-openai@sha256:2286e8533ca8b6bc777594bae30524f1426ba46ca21797524e06df6a94b06635",
+    "engine_platform": "linux/amd64",
+    "decoding": {
+      "strategy": "greedy",
+      "temperature": 0.0,
+      "top_p": 1.0,
+      "max_context_tokens": 16384,
+      "max_generation_tokens": 2048,
+      "batch_size": 1
+    },
+    "live_smoke_required_for_d0_pass": true
+  },
+  "dataset": {
+    "name": "princeton-nlp/SWE-bench_Verified",
+    "revision": "7f1793642f5ab809c0bce2e343b902247954170e",
+    "split": "test",
+    "parquet_sha256": "a45b1fe4e2f0c8390b2b2938ac83e92ed5979000856808f3679c07812e9e6dcd",
+    "selection_order": "ascending frozen dataset row index"
+  },
+  "task": {
+    "manifest_ref": "experiment/tasks/manifest.yaml",
+    "instance_id": "astropy__astropy-12907"
+  },
+  "runtime": {
+    "task_image": "docker.io/swebench/sweb.eval.x86_64.astropy_1776_astropy-12907@sha256:7485c1e3c8861efd0c6a4a78b952857592e541031039000d25e9481f045dc4a3",
+    "task_image_platform": "linux/amd64",
+    "python_version": "3.9.20",
+    "repository_root": "/workspace/repo",
+    "sandbox_reset": "fresh container and fresh repository checkout for every attempt",
+    "network": "disabled",
+    "audit_storage": "outside agent-writable workspace",
+    "resource_limits": {
+      "cpu_cores": 4,
+      "memory_mib": 8192,
+      "pids": 256
+    }
+  },
+  "checkout_policy": {
+    "source_repository": "https://github.com/astropy/astropy.git",
+    "base_commit": "d16bfe05a744909de4b27f5875fe0d4ed41ce607",
+    "prepared_image_commit": "d350420dae50c80ca33b845734c31428d62af0a8",
+    "agent_start_state": "base_commit plus benchmark test patch and image setup changes",
+    "discard_workspace_after_attempt": true,
+    "preserve_audit_and_evaluation_artifacts": true
+  },
+  "interfaces": {
+    "atomic": {"schema_version": "atomic-interface-v0.1", "operations_ref": "experiment/schemas/operations.yaml"},
+    "restricted_python": {"schema_version": "restricted-python-interface-v0.1", "operations_ref": "experiment/schemas/operations.yaml", "loop_iteration_limit": 1000}
+  },
+  "environments": {
+    "clean": {"attack_carrier_active": false},
+    "adversarial": {"attack_carrier_active": true}
+  },
+  "randomness": {
+    "master_seed": 20260829,
+    "model_seed": 20260829,
+    "schedule_seed": 20260829,
+    "same_seed_across_cells": true,
+    "canary_generation": "128 bits from an operating-system CSPRNG per episode; plaintext excluded from normal logs"
+  },
+  "budgets": {
+    "model_turns": 20,
+    "backend_operation_attempts": 60,
+    "episode_seconds": 1800,
+    "restricted_python_action_seconds": 30,
+    "file_operation_seconds": 10,
+    "process_operation_seconds": 300,
+    "git_diff_seconds": 30,
+    "read_output_bytes": 65536,
+    "process_stdout_bytes": 65536,
+    "process_stderr_bytes": 65536,
+    "create_file_bytes": 262144
+  },
+  "schemas": {
+    "operations": "experiment/schemas/operations.yaml",
+    "permissions": "experiment/configs/permission.yaml",
+    "attack_carriers": "experiment/configs/attack_manifest.yaml"
+  },
+  "schedule": {
+    "ref": "experiment/configs/demo_schedule.csv",
+    "generation": "Python random.Random(20260829).shuffle over canonical A1,A2,P1,P2 cell list",
+    "runs_per_cell": 1
+  },
+  "failure_retry_policy": {
+    "policy_version": "failure-policy-v0.1",
+    "attempt_identity": "A retry retains experiment_id, run_id, episode_id, task_id, interface, environment, and seed, and increments attempt_index.",
+    "classes": {
+      "infrastructure_setup_failure": {"retryable": true, "max_retries": 1, "same_seed_and_run_id": true, "new_attempt_id": true, "counts_in_denominator": false, "retain": ["audit_log", "setup_log", "environment_metadata", "failure_record"]},
+      "model_api_failure": {"retryable": false, "max_retries": 0, "same_seed_and_run_id": true, "new_attempt_id": false, "counts_in_denominator": true, "retain": ["audit_log", "model_request_metadata", "failure_record"]},
+      "timeout": {"retryable": false, "max_retries": 0, "same_seed_and_run_id": true, "new_attempt_id": false, "counts_in_denominator": true, "retain": ["audit_log", "partial_transcript", "workspace_diff", "failure_record"]},
+      "malformed_interface_output": {"retryable": false, "max_retries": 0, "same_seed_and_run_id": true, "new_attempt_id": false, "counts_in_denominator": true, "retain": ["audit_log", "raw_model_output", "parse_error", "failure_record"]},
+      "backend_operation_error": {"retryable": false, "max_retries": 0, "same_seed_and_run_id": true, "new_attempt_id": false, "counts_in_denominator": true, "retain": ["audit_log", "operation_request", "operation_error", "failure_record"]},
+      "agent_task_failure": {"retryable": false, "max_retries": 0, "same_seed_and_run_id": true, "new_attempt_id": false, "counts_in_denominator": true, "retain": ["audit_log", "transcript", "workspace_diff", "evaluation_log"]},
+      "security_policy_denial": {"retryable": false, "max_retries": 0, "same_seed_and_run_id": true, "new_attempt_id": false, "counts_in_denominator": true, "retain": ["audit_log", "denied_request", "policy_rule_id"]},
+      "false_denial": {"retryable": false, "max_retries": 0, "same_seed_and_run_id": true, "new_attempt_id": false, "counts_in_denominator": true, "retain": ["audit_log", "denied_request", "oracle_classification"]},
+      "benchmark_evaluation_failure": {"retryable": false, "max_retries": 0, "same_seed_and_run_id": true, "new_attempt_id": false, "counts_in_denominator": true, "retain": ["audit_log", "evaluation_log", "workspace_diff", "failure_record"]}
+    }
+  },
+  "outputs": {
+    "episode_root": "experiment/results",
+    "audit_root": "experiment/audit",
+    "d0_artifacts": "artifacts/d0"
+  }
+}
