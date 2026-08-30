@@ -70,6 +70,26 @@ R1 的命令、冻结依赖、模型身份与正式通过证据摘要见
 [`artifacts/r1/R1_DECISION.md`](artifacts/r1/R1_DECISION.md)。脚本拒绝覆盖已有
 attempt；每次重跑必须使用新的 run directory。
 
+R2 本地只验证冻结的候选顺序、task manifest、patch digest 和官方 harness
+命令边界，不启动 Docker：
+
+```bash
+python3 scripts/validate_task.py --manifest-only
+python3 -m unittest experiment.tests.test_task_manifest
+```
+
+正式 R2 必须在具有至少 120 GiB Docker 数据盘的原生 x86_64 Linux Docker
+host 上运行。安装固定 harness 后先执行 preflight：
+
+```bash
+python3 -m pip install -r requirements-r2.txt
+python3 scripts/validate_task.py --preflight --output-dir artifacts/r2/runtime
+```
+
+正式 baseline/reference 的两次重放命令与当前 `REVISE` 原因见
+[`artifacts/r2/R2_DECISION.md`](artifacts/r2/R2_DECISION.md)。A100 和 Qwen
+不参与 R2。
+
 R0 的机器清单与结论见
 [`artifacts/r0/MIGRATION_AUDIT.md`](artifacts/r0/MIGRATION_AUDIT.md)。历史 D0
 证据保留在 `artifacts/d0/`，其原始复查命令仍可按归档的

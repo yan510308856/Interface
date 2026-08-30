@@ -10,6 +10,11 @@ workers completed all three fixed prompts and the 16K context probe. The private
 raw bundle remains on Google Drive; the tracked decision and digests are in
 [`artifacts/r1/R1_DECISION.md`](../artifacts/r1/R1_DECISION.md).
 
+R2 has frozen the candidate order and implemented the official-harness wrapper.
+Local manifest and unit tests pass, but the decision remains `REVISE` until an
+x86_64 Docker host completes two baseline and two reference attempts. See
+[`artifacts/r2/R2_DECISION.md`](../artifacts/r2/R2_DECISION.md).
+
 The files still carrying D0 names or v28 semantics are preserved as historical
 evidence until their assigned R-stage replacements exist. Their exact disposition
 is recorded in
