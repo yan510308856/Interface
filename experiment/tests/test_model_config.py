@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -153,6 +154,32 @@ class R1ModelConfigTests(unittest.TestCase):
         messages = [call.args[0] for call in report.call_args_list]
         self.assertTrue(any("started" in message for message in messages))
         self.assertTrue(any("finished" in message for message in messages))
+
+    def test_cpu_prefetch_uses_resolved_revision_without_gpu(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            cache = Path(temporary) / "cache"
+            snapshot = cache / "snapshot"
+
+            def fake_download(**kwargs):
+                self.assertEqual("b" * 40, kwargs["revision"])
+                self.assertEqual(str(cache), kwargs["cache_dir"])
+                snapshot.mkdir(parents=True)
+                (snapshot / "model.safetensors").write_bytes(b"weights")
+                return str(snapshot)
+
+            environment_name = self.config["cache_policy"]["environment_variable"]
+            with (
+                mock.patch.dict(os.environ, {environment_name: str(cache)}),
+                mock.patch.object(
+                    model_runtime, "resolve_modelscope_revision", return_value="b" * 40
+                ),
+            ):
+                result = model_runtime.prefetch_snapshot(
+                    self.config, downloader=fake_download
+                )
+            self.assertEqual("b" * 40, result["resolved_revision"])
+            self.assertEqual(snapshot.resolve(), Path(result["snapshot_path"]))
+            self.assertGreater(result["cache_bytes"], 0)
 
     def test_failure_still_writes_complete_attempt_bundle(self):
         with tempfile.TemporaryDirectory() as temporary:

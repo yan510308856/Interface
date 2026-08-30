@@ -24,6 +24,7 @@ REQUIRED_PATHS = (
     "experiment/model_runtime.py",
     "experiment/tests/test_model_config.py",
     "scripts/smoke_model_colab.py",
+    "scripts/prefetch_model_colab.py",
     "artifacts/r1/R1_DECISION.md",
     "artifacts/d0/D0_DECISION.md",
     "artifacts/d0/digests.json",

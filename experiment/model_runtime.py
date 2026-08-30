@@ -340,6 +340,45 @@ def digest_snapshot(snapshot: str | Path) -> dict[str, Any]:
     return result
 
 
+def prefetch_snapshot(
+    config: Mapping[str, Any],
+    *,
+    downloader: Callable[..., str] | None = None,
+) -> dict[str, Any]:
+    """Download one immutable ModelScope snapshot without requiring a GPU."""
+    validate_config(config)
+    if downloader is None:
+        from modelscope import snapshot_download
+
+        downloader = snapshot_download
+
+    revision = resolve_modelscope_revision(config)
+    _progress(f"resolved ModelScope revision: {revision}")
+    cache_path = Path(_cache_dir(config) or Path.home()).expanduser()
+    cache_path.mkdir(parents=True, exist_ok=True)
+
+    def download_details() -> str:
+        usage = shutil.disk_usage(cache_path)
+        return (
+            f"cache={_format_gib(_directory_size(cache_path))}, "
+            f"disk_free={_format_gib(usage.free)}"
+        )
+
+    download_started = time.monotonic()
+    with _heartbeat("ModelScope snapshot download", download_details):
+        snapshot = downloader(
+            model_id=config["model_id"],
+            revision=revision,
+            cache_dir=_cache_dir(config),
+        )
+    return {
+        "resolved_revision": revision,
+        "snapshot_path": str(Path(snapshot).resolve()),
+        "download_seconds": round(time.monotonic() - download_started, 6),
+        "cache_bytes": _directory_size(cache_path),
+    }
+
+
 def load_model(config: Mapping[str, Any]) -> dict[str, Any]:
     """Download from ModelScope and load one model onto CUDA without offload."""
     global _ACTIVE
@@ -348,7 +387,6 @@ def load_model(config: Mapping[str, Any]) -> dict[str, Any]:
         raise RuntimeError("one model is already active in this process")
 
     import torch
-    from modelscope import snapshot_download
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     hardware = _check_hardware(config, torch)
@@ -362,25 +400,10 @@ def load_model(config: Mapping[str, Any]) -> dict[str, Any]:
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats(0)
 
-    revision = resolve_modelscope_revision(config)
-    _progress(f"resolved ModelScope revision: {revision}")
-    cache_path = Path(_cache_dir(config) or Path.home()).expanduser()
-
-    def download_details() -> str:
-        usage = shutil.disk_usage(cache_path)
-        return (
-            f"cache={_format_gib(_directory_size(cache_path))}, "
-            f"disk_free={_format_gib(usage.free)}"
-        )
-
-    download_started = time.monotonic()
-    with _heartbeat("ModelScope snapshot download", download_details):
-        snapshot = snapshot_download(
-            model_id=config["model_id"],
-            revision=revision,
-            cache_dir=_cache_dir(config),
-        )
-    download_seconds = time.monotonic() - download_started
+    prefetched = prefetch_snapshot(config)
+    revision = prefetched["resolved_revision"]
+    snapshot = prefetched["snapshot_path"]
+    download_seconds = prefetched["download_seconds"]
     snapshot_digests = digest_snapshot(snapshot)
 
     def load_details() -> str:

@@ -50,6 +50,19 @@ python3 scripts/smoke_model_colab.py \
   --process-count 2
 ```
 
+CPU Colab 可先把固定 ModelScope snapshot 下载到 Google Drive；这只是持久化
+cache，不构成 R1 通过证据：
+
+```bash
+python3 -m pip install "modelscope==1.39.1" "modelscope-hub==0.2.0"
+
+python3 scripts/prefetch_model_colab.py \
+  --config experiment/configs/model.yaml \
+  --cache-dir /content/drive/MyDrive/Interface-R1/modelscope-cache
+```
+
+正式 R1 仍须在 A100 上重新验证 revision、文件 digest、加载、生成与显存指标。
+
 R1 的真实命令、依赖版本和两阶段 freeze 流程见
 [`artifacts/r1/R1_DECISION.md`](artifacts/r1/R1_DECISION.md)。脚本拒绝覆盖已有
 attempt；每次重跑必须使用新的 run directory。
