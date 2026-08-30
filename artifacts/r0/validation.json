@@ -1,0 +1,73 @@
+{
+  "schema_version": "r0-validation-v1",
+  "overall": "PASS",
+  "checks": {
+    "authoritative_document_agreement": {
+      "status": "PASS",
+      "evidence": [
+        "Both documents define ModelScope as the model source and require an immutable resolved revision.",
+        "Both documents define Atomic/Python crossed with Clean/Adversarial as the four cells.",
+        "Both documents require one frozen base task with a paired carrier-only adversarial environment.",
+        "Both documents require one shared permission engine and one canonical backend.",
+        "Both documents define functional and Present/Exposure/Attempt/Block/Effect/Goal security oracles.",
+        "docs/aug29experiment.md orders implementation from R0 through R8."
+      ]
+    },
+    "stage_contract_completeness": {
+      "status": "PASS",
+      "evidence": "Each R0-R8 section declares its host, gate, target artifacts/commands, and sync destination; the stage matrix summarizes host and cloud boundaries."
+    },
+    "schema_responsibility_boundary": {
+      "status": "PASS",
+      "evidence": "interface29.md defines the research-level eight-operation capability set; aug29experiment.md owns implementation order and points to one versioned operations schema rather than redefining a second full schema."
+    },
+    "migration_inventory_complete": {
+      "status": "PASS",
+      "evidence": "18 tracked D0-related files in experiment/, scripts/, and artifacts/d0/ have an action, role, target stage, and reason; unresolved_conflicts is 0."
+    },
+    "inventory_spot_check": {
+      "status": "PASS",
+      "evidence": [
+        "demo.yaml is assigned to R8 after R1 establishes model identity.",
+        "permission.yaml is assigned to R4 before adapter implementation.",
+        "attack_manifest.yaml is assigned to R3 before adversarial episodes."
+      ]
+    },
+    "legacy_reference_routing": {
+      "status": "PASS",
+      "evidence": "README.md and experiment/README.md name v29 as normative; any v28 path is explicitly historical provenance."
+    },
+    "experiment_functionality_unchanged": {
+      "status": "PASS",
+      "evidence": "R0 changed no config, schema, task patch, experiment test, model runtime, backend, adapter, runner, or oracle implementation."
+    },
+    "safety_boundary": {
+      "status": "PASS",
+      "evidence": "The audit preserves the synthetic-canary, isolated-workspace, no-production, no-third-party boundary and does not execute the carrier."
+    }
+  },
+  "commands": [
+    {
+      "command": "python3 scripts/check_repository.py",
+      "exit_code": 0,
+      "expected_result": "Repository structure check passed."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s experiment/tests -p 'test_*.py'",
+      "exit_code": 0,
+      "expected_result": "6 tests passed"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "expected_result": "no output"
+    }
+  ],
+  "host": {
+    "location": "local",
+    "platform": "Darwin 25.6.0 arm64",
+    "python": "3.9.6"
+  },
+  "source_commit": "e090df418afa3d8d02c11efefa0533ada5def8db",
+  "branch": "r0-migration-audit"
+}

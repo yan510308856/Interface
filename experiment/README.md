@@ -1,17 +1,17 @@
 # Experiment implementation
 
-This directory currently contains the legacy D0 implementation described by
-`docs/archive/aug28experiment.md`. It has not yet been migrated to the current
-R0–R8 protocol in `docs/aug29experiment.md`.
+This directory is being migrated stage by stage to the R0–R8 protocol in
+[`docs/aug29experiment.md`](../docs/aug29experiment.md). R0 is complete; R1 is
+the next unstarted gate.
 
-Current gate: **D0 — Freeze Demo Spec (`D0: REVISE`)**.
+Current gate: **R1 — Qwen / ModelScope / A100 feasibility (not started)**.
 
-The D0 configuration, task, schemas, schedule, digests, and local validation
-boundaries are frozen. The benchmark baseline and reference-patch oracles pass in
-the pinned task image. D0 remains at `REVISE` because the pinned model and vLLM
-runtime have not completed the required live Atomic and Restricted Python smoke
-tests on compatible hardware. No D1 backend, adapter, runner, or experiment result
-exists yet.
+The files still carrying D0 names or v28 semantics are preserved as historical
+evidence until their assigned R-stage replacements exist. Their exact disposition
+is recorded in
+[`artifacts/r0/migration_inventory.json`](../artifacts/r0/migration_inventory.json);
+they are not active v29 configuration and do not establish an R-stage pass.
 
-The `.yaml` files use JSON syntax, which is valid YAML 1.2, so the D0 utilities can
-parse them with the Python standard library and add no dependency.
+Do not update a legacy file opportunistically. Follow its target stage in the R0
+inventory, preserve the v28 evidence, and remove replacement-only utilities after
+their v29 equivalents pass.

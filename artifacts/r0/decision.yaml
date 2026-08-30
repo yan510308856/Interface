@@ -1,0 +1,59 @@
+{
+  "schema_version": "r0-decision-v1",
+  "stage": "R0",
+  "status": "complete",
+  "decision": "pass",
+  "host": "local",
+  "artifact": [
+    "artifacts/r0/MIGRATION_AUDIT.md",
+    "artifacts/r0/migration_inventory.json",
+    "artifacts/r0/validation.json",
+    "artifacts/r0/decision.yaml"
+  ],
+  "artifact_digests": {
+    "artifacts/r0/MIGRATION_AUDIT.md": "03380a3831453b3e6d2f605ba6c44d9391d8f72987b7091433b22a466b13fc11",
+    "artifacts/r0/migration_inventory.json": "d137e404c7bdb6fad22c1a281e64813d79c0d0ab8ca0d39940bed4ee903aae78",
+    "artifacts/r0/validation.json": "320811d3c8b5927839e5eb4481ac3615d8872b7d5bde3beed0cd3d7edfe9f894"
+  },
+  "code_commit": "e090df418afa3d8d02c11efefa0533ada5def8db (working tree intentionally dirty during R0 implementation)",
+  "environment": {
+    "platform": "Darwin 25.6.0 arm64",
+    "python": "3.9.6",
+    "gpu": "not applicable",
+    "container": "not applicable"
+  },
+  "validation": [
+    {
+      "command": "python3 scripts/check_repository.py",
+      "exit_code": 0,
+      "report": "artifacts/r0/validation.json"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s experiment/tests -p 'test_*.py'",
+      "exit_code": 0,
+      "report": "artifacts/r0/validation.json"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "report": "artifacts/r0/validation.json"
+    }
+  ],
+  "cloud_sync": {
+    "github": "not committed or pushed; awaiting user review",
+    "google_drive": "not applicable for R0"
+  },
+  "open_risks": [
+    "R1 has not yet demonstrated ModelScope Qwen inference on Colab A100 or resolved an immutable model revision.",
+    "All files assigned to R2-R8 still carry legacy semantics until their owning stage replaces and validates them.",
+    "The historical D0 validator remains intentionally incomplete and is not a v29 gate."
+  ],
+  "provenance": {
+    "protocol_revision_date": "2026-08-30",
+    "branch": "r0-migration-audit",
+    "source_commit": "e090df418afa3d8d02c11efefa0533ada5def8db",
+    "research_skill": "agent-security-empirical-study",
+    "research_skill_role": "safety boundary, reproducibility inventory, and stage handoff contract"
+  },
+  "next_stage": "R1 — Qwen / ModelScope / A100 feasibility"
+}

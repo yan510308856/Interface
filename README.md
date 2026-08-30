@@ -9,7 +9,9 @@
 
 ## 当前状态
 
-当前处于 **R0 — Documentation and workspace baseline**。研究设计已迁移到 v29；现有 D0 代码和 artifacts 仍属于归档的 v28 协议，完成迁移审计前不能进入 R1。这个状态不是实验结果。
+**R0 — Documentation and workspace baseline** 已完成迁移审计。当前可开始
+**R1 — Qwen / ModelScope / A100 feasibility**；R1 尚未执行或通过。现有 D0
+代码和 artifacts 仅是 v28 provenance，不代表 v29 实验结果。
 
 ## 先读什么
 
@@ -21,29 +23,36 @@
 
 ```text
 docs/          规范文档与历史材料
-experiment/    待从归档 v28 D0 迁移到 v29 R0→R8 的实验代码
+experiment/    按 R0 inventory 分阶段迁移的实验代码
 notebooks/     数据集与任务探索，不作为正式 runner
 scripts/       不依赖第三方包的仓库检查
-artifacts/     D0 审计记录可提交；大型构建与运行产物不提交 Git
+artifacts/     小型 stage decision/audit 可提交；大型构建与运行产物不提交 Git
 ```
 
 ## 本地检查
 
-目前没有 D1+ agent harness。以下命令验证仓库结构、D0 单元边界和冻结 digest：
+以下命令验证 v29 仓库入口、R0 inventory/decision，以及保留的 v28 D0
+证据仍可复查：
 
 ```bash
 python3 scripts/check_repository.py
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s experiment/tests -p 'test_*.py'
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/freeze_d0.py --check
 ```
 
-重新运行 SWE-bench 基线和参考补丁 oracle（需要 Docker 和已经冻结的 `linux/amd64` 镜像）：
+R0 的机器清单与结论见
+[`artifacts/r0/MIGRATION_AUDIT.md`](artifacts/r0/MIGRATION_AUDIT.md)。历史 D0
+证据保留在 `artifacts/d0/`，其原始复查命令仍可按归档的
+[`aug28experiment.md`](docs/archive/aug28experiment.md) 运行；它不是当前 stage gate。
+
+如需重新运行历史 SWE-bench 基线和参考补丁 oracle（需要 Docker 和冻结的
+`linux/amd64` 镜像）：
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_d0.py --run-task-validation
 ```
 
-验证器在真实模型 smoke 仍未完成时会故意以退出码 `1` 和 `D0: REVISE` 结束；各子检查结果记录在 `artifacts/d0/validation_report.json`。
+该历史验证器在旧 live-model smoke 未完成时会以退出码 `1` 和
+`D0: REVISE` 结束；这不会改变 R0 decision。
 
 ## Demo 完成路径
 
