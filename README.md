@@ -9,9 +9,10 @@
 
 ## 当前状态
 
-**R0 — Documentation and workspace baseline** 已完成迁移审计。当前可开始
-**R1 — Qwen / ModelScope / A100 feasibility**；R1 尚未执行或通过。现有 D0
-代码和 artifacts 仅是 v28 provenance，不代表 v29 实验结果。
+**R0 — Documentation and workspace baseline** 已通过。**R1 — Qwen /
+ModelScope / A100 feasibility** 的本地代码与测试已准备好，但真实 A100 双进程
+smoke 尚未完成，因此 R1 当前仍是 `REVISE`。现有 D0 代码和 artifacts 仅是
+v28 provenance，不代表 v29 实验结果。
 
 ## 先读什么
 
@@ -38,6 +39,20 @@ artifacts/     小型 stage decision/audit 可提交；大型构建与运行产�
 python3 scripts/check_repository.py
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s experiment/tests -p 'test_*.py'
 ```
+
+R1 本地预检（不下载模型、不需要 GPU）：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest experiment.tests.test_model_config
+python3 scripts/smoke_model_colab.py \
+  --config experiment/configs/model.yaml \
+  --dry-run \
+  --process-count 2
+```
+
+R1 的真实命令、依赖版本和两阶段 freeze 流程见
+[`artifacts/r1/R1_DECISION.md`](artifacts/r1/R1_DECISION.md)。脚本拒绝覆盖已有
+attempt；每次重跑必须使用新的 run directory。
 
 R0 的机器清单与结论见
 [`artifacts/r0/MIGRATION_AUDIT.md`](artifacts/r0/MIGRATION_AUDIT.md)。历史 D0

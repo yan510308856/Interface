@@ -40,6 +40,9 @@ artifacts/*
 !artifacts/r0/migration_inventory.json
 !artifacts/r0/validation.json
 !artifacts/r0/decision.yaml
+!artifacts/r1/
+artifacts/r1/*
+!artifacts/r1/R1_DECISION.md
 docs/archive/*.pdf
 *.pptx
 *.pptx.inspect.ndjson
