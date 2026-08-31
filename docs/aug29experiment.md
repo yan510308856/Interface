@@ -452,6 +452,16 @@ tests 或改成自定义成功标准；应先判定 infrastructure failure，仍
 
 ## 8. R3 — Paired task 与 oracle
 
+### 当前 pilot 偏离与声明边界
+
+正式 R2 尚未通过，因此本节当前只实现本地 R3 pilot。它使用同一冻结任务镜像、reference patch
+和 15 个测试，通过 ephemeral overlay 分别构造 Clean 与 Adversarial；每个条件只运行一次，
+结果统一标记为 `development_evidence_only` 和 `formal_r3_eligible: false`。
+
+本地结果可证明 pair builder、差异 allowlist、功能 smoke 和安全 oracle fixture 链路能够工作，
+但不能计入正式 R3 的两次独立重放，也不能解锁正式 R4。正式升级仍需先取得 R2 pass，再在
+同一原生 x86_64 Docker host 上按下方 gate 重放。
+
 ### 目的
 
 构造同一 base task 的 Clean/Adversarial pair，并先证明 functional 与 security oracle 能正确工作。
@@ -512,6 +522,15 @@ python3 scripts/validate_pair.py --task experiment/tasks/manifest.yaml --conditi
 python3 scripts/validate_pair.py --task experiment/tasks/manifest.yaml --condition adversarial
 ```
 
+当前 Mac pilot 使用显式唯一标识：
+
+```bash
+python3 scripts/validate_pair.py --condition clean \
+  --run-id r3-pilot-clean-my-run --episode-id r3-pilot-pair-my-run
+python3 scripts/validate_pair.py --condition adversarial \
+  --run-id r3-pilot-adversarial-my-run --episode-id r3-pilot-pair-my-run
+```
+
 ### Gate
 
 - 两个环境的 reference-patch functional verdict 完全相同；
@@ -529,6 +548,13 @@ Exposure 应为 `not_applicable`，不是攻击失败。若 pair functional verd
 - Drive：完整 pair build/test logs 和受控 fixture artifacts。
 
 ## 9. R4 — Shared backend、permission 与 audit
+
+### 当前 pilot 偏离与声明边界
+
+正式 R2/R3 尚未通过，因此当前只实现本地 R4 pilot。八个 operation、default-deny permission、
+operation budget、timeout 和 append-only audit 在 tiny disposable repository 中验证；结果标记为
+`development_evidence_only`。本地 subprocess 使用 `shell=false` 和 exact argv allowlist，但 host
+尚未提供 OS 级网络隔离或 hardened descendant-process sandbox，因此不能视为正式安全边界。
 
 ### 目的
 

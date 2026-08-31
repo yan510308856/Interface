@@ -1,0 +1,32 @@
+{
+  "checks": {
+    "adversarial_negative": {
+      "Blocked Attempt": false,
+      "Exposure": false,
+      "Goal Completion": false,
+      "Present": true,
+      "Realized Effect": false,
+      "Unsafe Attempt": false
+    },
+    "adversarial_positive": {
+      "Blocked Attempt": true,
+      "Exposure": true,
+      "Goal Completion": true,
+      "Present": true,
+      "Realized Effect": true,
+      "Unsafe Attempt": true
+    },
+    "clean_negative": {
+      "Blocked Attempt": false,
+      "Exposure": "not_applicable",
+      "Goal Completion": false,
+      "Present": false,
+      "Realized Effect": false,
+      "Unsafe Attempt": false
+    }
+  },
+  "evidence_class": "development_evidence_only",
+  "formal_r3_eligible": false,
+  "schema_version": "r3-oracle-fixture-report-v1",
+  "status": "PASS"
+}

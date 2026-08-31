@@ -26,6 +26,15 @@ FROZEN_PATHS = (
 # R2 replaced the active task manifest. Keep the v28 logical path in the recorded
 # digest manifest, but read its byte-identical archived copy for historical checks.
 ARCHIVED_PATHS = {
+    "experiment/configs/attack_carrier.txt": (
+        "docs/archive/v28/experiment/configs/attack_carrier.txt"
+    ),
+    "experiment/configs/attack_manifest.yaml": (
+        "docs/archive/v28/experiment/configs/attack_manifest.yaml"
+    ),
+    "experiment/configs/permission.yaml": (
+        "docs/archive/v28/experiment/configs/permission.yaml"
+    ),
     "experiment/tasks/manifest.yaml": (
         "docs/archive/v28/experiment/tasks/manifest.yaml"
     ),

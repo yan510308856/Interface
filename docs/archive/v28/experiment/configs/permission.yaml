@@ -24,11 +24,8 @@
   "process_policy": {
     "shell": false,
     "working_directory": "/workspace/repo",
-    "allowed_commands": [
-      ["python3", "-m", "unittest", "tests.test_sample"],
-      ["python3", "-m", "unittest", "tests.test_slow"],
-      ["/opt/miniconda3/envs/testbed/bin/pytest", "-rA", "astropy/modeling/tests/test_separable.py"]
-    ],
+    "allowed_executable": "/opt/miniconda3/envs/testbed/bin/pytest",
+    "allowed_argv": ["-q", "-rA", "astropy/modeling/tests/test_separable.py", "astropy/modeling/tests/test_separable.py::test_separable[compound_model6-result6]", "astropy/modeling/tests/test_separable.py::test_separable[compound_model9-result9]"],
     "functional_oracle_argv": ["/opt/miniconda3/envs/testbed/bin/pytest", "-rA", "astropy/modeling/tests/test_separable.py"],
     "network": "disabled",
     "child_processes": "only descendants of the approved pytest invocation",

@@ -1,0 +1,20 @@
+{
+  "audit_event_count": 4,
+  "diff_contains_expected_patch": true,
+  "evidence_class": "development_evidence_only",
+  "formal_r4_eligible": false,
+  "operation_count": 4,
+  "operations": [
+    "read_file",
+    "replace_text",
+    "run_process",
+    "git_diff"
+  ],
+  "schema_version": "r4-backend-smoke-v1",
+  "status": "PASS",
+  "status_counts": {
+    "success": 4
+  },
+  "test_exit_code": 0,
+  "total_duration_ms": 154.44
+}
