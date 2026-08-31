@@ -343,6 +343,18 @@ python3 scripts/smoke_model_colab.py \
 
 ## 7. R2 — Clean SWE-bench task 选择与冻结
 
+### 当前 pilot 偏离与声明边界
+
+当前项目选择在 Apple Silicon Mac 上做一次本地实现可行性 pilot，而不是继续追求正式 R2
+通过。pilot 保留同一 manifest、patch、测试、oracle、固定镜像和容器网络隔离，但允许通过
+`linux/amd64` 模拟各运行一次 baseline/reference。其结果必须标记为
+`development_evidence_only`，不得计入下方正式门禁要求的重复次数。
+
+当前决策固定为 `status: incomplete`、`decision: pilot_only`。这条路径可以支持课程、学习和
+概念演示，但不能宣称 R2 正式通过、原生环境稳定复现，或后续四个 cell 是严格受控实验。
+若未来获得原生 x86_64 Docker host，应回到本节原正式协议，从 fresh workspace 独立完成两次
+baseline 和两次 reference；不能把本地 pilot 结果补计为其中任何一次。
+
 ### 目的
 
 按预先规则选出第一个可复现的 SWE-bench Verified task，证明 baseline failure 与 official
@@ -403,6 +415,15 @@ Local 只做 config test：
 ```bash
 python3 -m unittest experiment.tests.test_task_manifest
 python3 scripts/validate_task.py --manifest-only
+```
+
+当前 Mac pilot 各运行一次（开发证据，不改变正式 gate）：
+
+```bash
+python3 scripts/validate_task.py --pilot --candidate-index 0 --mode baseline \
+  --run-id r2-pilot-baseline-my-run --output-dir artifacts/r2/pilot
+python3 scripts/validate_task.py --pilot --candidate-index 0 --mode reference \
+  --run-id r2-pilot-reference-my-run --output-dir artifacts/r2/pilot
 ```
 
 Docker host 做真实 oracle：

@@ -12,9 +12,9 @@
 **R0 — Documentation and workspace baseline** 与 **R1 — Qwen / ModelScope /
 A100 feasibility** 已通过。R1 的冻结配置在两个独立 A100 worker 中完成三个
 固定 prompt、语法解析和 16,384-token context probe，模型 revision、snapshot
-digest、输入 token IDs 与 runtime identity 一致。当前进入 **R2 — Clean task
-feasibility and task manifest freeze**。现有 D0 代码和 artifacts 仅是 v28
-provenance，不代表 v29 实验结果。
+digest、输入 token IDs 与 runtime identity 一致。当前 **R2 降级为本地
+implementation-feasibility pilot**：正式状态保持 `incomplete`，决策为 `pilot_only`。
+现有 D0 代码和 artifacts 仅是 v28 provenance，不代表 v29 实验结果。
 
 ## 先读什么
 
@@ -70,6 +70,37 @@ R1 的命令、冻结依赖、模型身份与正式通过证据摘要见
 [`artifacts/r1/R1_DECISION.md`](artifacts/r1/R1_DECISION.md)。脚本拒绝覆盖已有
 attempt；每次重跑必须使用新的 run directory。
 
+R2 本地先验证冻结的候选顺序、task manifest、patch digest 和命令边界：
+
+```bash
+python3 scripts/validate_task.py --manifest-only
+python3 -m unittest experiment.tests.test_task_manifest
+```
+
+Apple Silicon Mac 上可通过固定 `linux/amd64` 镜像各运行一次 baseline/reference：
+
+```bash
+python3 scripts/validate_task.py --pilot --candidate-index 0 --mode baseline \
+  --run-id r2-pilot-baseline-my-run --output-dir artifacts/r2/pilot
+python3 scripts/validate_task.py --pilot --candidate-index 0 --mode reference \
+  --run-id r2-pilot-reference-my-run --output-dir artifacts/r2/pilot
+```
+
+这些结果只用于展示实现链路，明确属于 development evidence；它们不证明 R2
+正式通过、任务在原生环境稳定复现，也不解锁正式 R3 或严格受控的四-cell 实验。
+
+正式 R2 必须在具有至少 120 GiB Docker 数据盘的原生 x86_64 Linux Docker
+host 上运行。安装固定 harness 后先执行 preflight：
+
+```bash
+python3 -m pip install -r requirements-r2.txt
+python3 scripts/validate_task.py --preflight --output-dir artifacts/r2/runtime
+```
+
+正式 baseline/reference 的重复要求与当前 `pilot_only` 限制见
+[`artifacts/r2/R2_DECISION.md`](artifacts/r2/R2_DECISION.md)。A100 和 Qwen
+不参与 R2。
+
 R0 的机器清单与结论见
 [`artifacts/r0/MIGRATION_AUDIT.md`](artifacts/r0/MIGRATION_AUDIT.md)。历史 D0
 证据保留在 `artifacts/d0/`，其原始复查命令仍可按归档的
@@ -87,7 +118,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_d0.py --run-task-validation
 
 ## Demo 完成路径
 
-严格按照 `docs/aug29experiment.md` 推进：R1 验证 ModelScope Qwen/A100，R2–R3 冻结 clean/paired task 与 oracle，R4–R5 实现 backend、permission 和两种 interface，R6–R8 完成真实模型 smoke 与四-cell Demo。
+当前只按 `docs/aug29experiment.md` 的 pilot 分支继续实现和展示。正式路径仍要求 R2
+在原生 x86_64 Docker host 通过后，才可将 R3–R8 的结果称为受控实验阶段证据。
 
 ## 安全与复现
 

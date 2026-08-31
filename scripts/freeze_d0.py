@@ -23,6 +23,14 @@ FROZEN_PATHS = (
     "experiment/tasks/manifest.yaml",
 )
 
+# R2 replaced the active task manifest. Keep the v28 logical path in the recorded
+# digest manifest, but read its byte-identical archived copy for historical checks.
+ARCHIVED_PATHS = {
+    "experiment/tasks/manifest.yaml": (
+        "docs/archive/v28/experiment/tasks/manifest.yaml"
+    ),
+}
+
 
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -31,7 +39,8 @@ def sha256_bytes(data: bytes) -> str:
 def compute_manifest() -> dict[str, object]:
     files: dict[str, dict[str, object]] = {}
     for relative in sorted(FROZEN_PATHS):
-        data = (ROOT / relative).read_bytes()
+        physical = ARCHIVED_PATHS.get(relative, relative)
+        data = (ROOT / physical).read_bytes()
         files[relative] = {"sha256": sha256_bytes(data), "bytes": len(data)}
     identity_material = "".join(
         f"{path}\0{entry['sha256']}\n" for path, entry in files.items()

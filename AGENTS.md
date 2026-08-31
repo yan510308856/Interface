@@ -18,7 +18,8 @@ If these documents conflict, stop and report the conflict before editing code.
 
 ## Current State
 
-- Current implementation stage: **R2 — Clean task feasibility and task manifest freeze**.
+- Current implementation stage: **R2 — local implementation-feasibility pilot**
+  (`status: incomplete`, `decision: pilot_only`); formal R2 remains unpassed.
 - **R1 — Qwen / ModelScope / A100 feasibility** passed on 2026-08-30; its frozen
   configuration and evidence summary are recorded in `artifacts/r1/R1_DECISION.md`,
   while the complete private run bundle remains on Google Drive.

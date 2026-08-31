@@ -2,13 +2,19 @@
 
 This directory is being migrated stage by stage to the R0–R8 protocol in
 [`docs/aug29experiment.md`](../docs/aug29experiment.md). R0 and R1 are complete;
-R2 is the current gate.
+R2 is the current, pilot-only gate.
 
-Current gate: **R2 — Clean task feasibility and task manifest freeze**.
+Current gate: **R2 — local implementation-feasibility pilot**.
 R1 passed with a frozen ModelScope revision and runtime after two independent A100
 workers completed all three fixed prompts and the 16K context probe. The private
 raw bundle remains on Google Drive; the tracked decision and digests are in
 [`artifacts/r1/R1_DECISION.md`](../artifacts/r1/R1_DECISION.md).
+
+R2 has frozen the candidate order and implemented the official-harness wrapper.
+The local Mac path runs one `linux/amd64`-emulated baseline and reference as
+development evidence only. The stage remains incomplete with decision
+`pilot_only`; these attempts cannot satisfy the formal repetition gate. See
+[`artifacts/r2/R2_DECISION.md`](../artifacts/r2/R2_DECISION.md).
 
 The files still carrying D0 names or v28 semantics are preserved as historical
 evidence until their assigned R-stage replacements exist. Their exact disposition

@@ -5,16 +5,23 @@
 本文档只定义研究问题和实验设计，是研究含义的唯一来源。执行顺序、运行位置和阶段门禁见
 [`aug29experiment.md`](aug29experiment.md)。接口、权限、任务或指标的实现不得改变本文定义。
 
-当前状态是 **revised design，尚未开始正式实验**。Demo 的目标是验证一条最小、可审计的
-端到端路径，而不是从一个 SWE-bench task 得出可推广的统计结论。
+当前状态是 **implementation-feasibility pilot，尚未开始正式实验**。由于当前 Mac 只能通过
+`linux/amd64` 模拟运行任务容器，本仓库当前只验证最小端到端实现路径。这里保存的
+baseline/reference 结果属于开发证据，不能用于宣称 R2 正式通过、任务已在原生环境稳定复现，
+或后续四个 cell 构成严格受控实验。
+
+原正式设计仍作为未来升级目标保留。只有在原生 x86_64 Docker host 上完成
+`aug29experiment.md` 的重复运行门禁后，才能恢复正式 R2/R3–R8 路径；本地 pilot 不会绕过
+该门禁。
 
 ## 2. 研究问题
 
 > 在模型、基础任务、权限、底层能力、预算和运行环境匹配的条件下，Atomic 与
 > Restricted Python 两种动作接口是否会改变 Coding Agent 的功能表现、安全行为和执行成本？
 
-研究对象固定为一个通过预注册筛选的 SWE-bench Verified 任务及其 Clean/Adversarial
-配对版本。模型固定为从 **ModelScope** 下载并按不可变 revision 锁定的 Qwen coding model。
+正式研究对象拟固定为一个通过预注册筛选的 SWE-bench Verified 任务及其 Clean/Adversarial
+配对版本。当前 pilot 仅使用候选任务展示实现机制，并不声称该任务已经通过正式筛选。模型固定
+为从 **ModelScope** 下载并按不可变 revision 锁定的 Qwen coding model。
 初始候选为 `Qwen/Qwen3-Coder-30B-A3B-Instruct`；只有在 A100 可行性门禁通过后，才把
 实际成功的 ModelScope revision、推理引擎、dtype 和 context 写入冻结配置。模型权重不从
 Hugging Face 下载。

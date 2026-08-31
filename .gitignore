@@ -43,6 +43,11 @@ artifacts/*
 !artifacts/r1/
 artifacts/r1/*
 !artifacts/r1/R1_DECISION.md
+!artifacts/r2/
+artifacts/r2/*
+!artifacts/r2/R2_DECISION.md
+!artifacts/r2/selection_report.json
+!artifacts/r2/pilot_summary.json
 docs/archive/*.pdf
 *.pptx
 *.pptx.inspect.ndjson

@@ -1,26 +1,17 @@
 {
-  "schema_version": "task-manifest-v0.2",
-  "freeze_status": "pending_r2_docker_revalidation",
+  "schema_version": "task-manifest-v0.1",
   "dataset": {
     "name": "princeton-nlp/SWE-bench_Verified",
     "revision": "7f1793642f5ab809c0bce2e343b902247954170e",
     "split": "test",
     "parquet_sha256": "a45b1fe4e2f0c8390b2b2938ac83e92ed5979000856808f3679c07812e9e6dcd"
   },
-  "harness": {
-    "repository": "https://github.com/SWE-bench/SWE-bench.git",
-    "commit": "7a21e05772954cc81471ae19d56f436cecf43c54",
-    "install_requirement": "git+https://github.com/SWE-bench/SWE-bench.git@7a21e05772954cc81471ae19d56f436cecf43c54",
-    "entrypoint": ["python", "-m", "swebench.harness.run_evaluation"]
-  },
   "selection": {
-    "candidate_config": "experiment/tasks/candidates.yaml",
-    "rule": "Select the first listed candidate that passes every frozen R2 criterion before any model or interface task run.",
-    "selected_candidate_index": 0,
-    "dataset_row_index": 0,
-    "decision": "candidate_pending_fresh_docker_replay",
-    "required_repetitions_per_mode": 2,
-    "historical_evidence_role": "v28 evidence may motivate replay but cannot satisfy the v29 R2 gate"
+    "rule": "Select the first row in the frozen dataset split that satisfies the screening criteria in docs/archive/interface28.md section 7.1 and docs/archive/aug28experiment.md D0.",
+    "order": "ascending frozen dataset row index",
+    "selected_row_index": 0,
+    "decision": "eligible",
+    "reason": "The first frozen row is repository-local, has a single benchmark test file, a deterministic two-test fail-to-pass oracle, a small reference patch, no network requirement, and reproduces under the official per-instance image."
   },
   "task": {
     "instance_id": "astropy__astropy-12907",
@@ -40,17 +31,19 @@
       "sha256": "5ef90b640ffce4590bb61ef2ea0e3256416dddf41b45bf4f2c3610a6e8c53718",
       "identity": "official frozen dataset test patch bytes"
     },
-    "baseline_prediction": {
-      "path": "experiment/tasks/astropy__astropy-12907/baseline.patch",
-      "sha256": "868cd5604c3ef2127128b914b184cd03b95fe98dfcca6e3cb07655569eccdc63",
-      "identity": "inert non-solution patch that only creates .r2_baseline_probe",
-      "reason": "the official harness skips an empty model_patch instead of executing the baseline oracle"
-    },
     "docker_image": {
       "reference": "docker.io/swebench/sweb.eval.x86_64.astropy_1776_astropy-12907@sha256:7485c1e3c8861efd0c6a4a78b952857592e541031039000d25e9481f045dc4a3",
       "platform": "linux/amd64",
       "index_digest": "sha256:e082963099ed7d5a5f75a0be46e338be36faae33b2cba5289a9ddbd505997f1f",
       "python_version": "3.9.20"
+    },
+    "setup": {
+      "working_directory": "/testbed",
+      "network": "disabled",
+      "baseline_state": "prepared image checkout with test.patch applied and reference.patch absent",
+      "reference_state": "fresh prepared image checkout with test.patch and reference.patch applied",
+      "patch_command": ["git", "apply", "--verbose"],
+      "evaluation_command": ["/opt/miniconda3/envs/testbed/bin/pytest", "-rA", "astropy/modeling/tests/test_separable.py"]
     },
     "oracle": {
       "fail_to_pass": [
@@ -72,43 +65,8 @@
         "astropy/modeling/tests/test_separable.py::test_separable[compound_model8-result8]",
         "astropy/modeling/tests/test_separable.py::test_custom_model_separable"
       ],
-      "baseline_expected": {
-        "resolved": false,
-        "fail_to_pass_failed": 2,
-        "pass_to_pass_passed": 13
-      },
-      "reference_expected": {
-        "resolved": true,
-        "fail_to_pass_passed": 2,
-        "pass_to_pass_passed": 13
-      }
-    }
-  },
-  "execution": {
-    "max_workers": 1,
-    "timeout_seconds": 1800,
-    "cache_level": "instance",
-    "clean_images": false,
-    "minimum_free_disk_gib": 120,
-    "required_host_architecture": "x86_64",
-    "network_policy": "host network only for immutable dataset/image acquisition; evaluation container network disabled by official harness",
-    "gpu_metrics": "not_applicable",
-    "run_id_policy": "globally unique within the R2 output root; reuse is rejected"
-  },
-  "evidence": {
-    "status": "pending",
-    "required_modes": ["baseline", "reference"],
-    "required_attempts_per_mode": 2,
-    "selection_report": "artifacts/r2/selection_report.json",
-    "private_logs": "Google Drive R2 output bundle",
-    "pilot": {
-      "status": "complete",
-      "required_attempts_per_mode": 1,
-      "container_platform": "linux/amd64",
-      "host_policy": "local emulation allowed",
-      "evidence_class": "development_evidence_only",
-      "formal_r2_eligible": false,
-      "summary": "artifacts/r2/pilot_summary.json"
+      "baseline_expected": {"exit_code": 1, "fail_to_pass_failed": 2, "pass_to_pass_passed": 13},
+      "reference_expected": {"exit_code": 0, "fail_to_pass_passed": 2, "pass_to_pass_passed": 13}
     }
   }
 }
