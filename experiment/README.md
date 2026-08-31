@@ -22,6 +22,11 @@ the Adversarial overlay; the functional and security oracle outputs are marked
 `development_evidence_only`. See
 [`artifacts/r3/R3_DECISION.md`](../artifacts/r3/R3_DECISION.md).
 
+R4 adds one canonical backend entry point, one default-deny permission engine,
+and an append-only audit logger for tiny disposable fixtures. Its local smoke is
+development evidence, not a hardened sandbox or formal stage pass. See
+[`artifacts/r4/R4_DECISION.md`](../artifacts/r4/R4_DECISION.md).
+
 The files still carrying D0 names or v28 semantics are preserved as historical
 evidence until their assigned R-stage replacements exist. Their exact disposition
 is recorded in

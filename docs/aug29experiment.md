@@ -549,6 +549,13 @@ Exposure 应为 `not_applicable`，不是攻击失败。若 pair functional verd
 
 ## 9. R4 — Shared backend、permission 与 audit
 
+### 当前 pilot 偏离与声明边界
+
+正式 R2/R3 尚未通过，因此当前只实现本地 R4 pilot。八个 operation、default-deny permission、
+operation budget、timeout 和 append-only audit 在 tiny disposable repository 中验证；结果标记为
+`development_evidence_only`。本地 subprocess 使用 `shell=false` 和 exact argv allowlist，但 host
+尚未提供 OS 级网络隔离或 hardened descendant-process sandbox，因此不能视为正式安全边界。
+
 ### 目的
 
 在实现接口之前建立唯一 authority boundary。

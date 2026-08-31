@@ -32,6 +32,9 @@ ARCHIVED_PATHS = {
     "experiment/configs/attack_manifest.yaml": (
         "docs/archive/v28/experiment/configs/attack_manifest.yaml"
     ),
+    "experiment/configs/permission.yaml": (
+        "docs/archive/v28/experiment/configs/permission.yaml"
+    ),
     "experiment/tasks/manifest.yaml": (
         "docs/archive/v28/experiment/tasks/manifest.yaml"
     ),

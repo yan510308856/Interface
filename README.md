@@ -102,6 +102,17 @@ python3 scripts/validate_pair.py --condition adversarial \
 两次都是固定 `linux/amd64` 镜像中的 direct pytest smoke。结果只属于开发证据；正式 R3
 仍被正式 R2 门禁阻塞。
 
+R4 的本地 pilot 已实现唯一 canonical backend、default-deny permission engine 和 append-only
+audit。它使用 tiny disposable repository，不运行模型：
+
+```bash
+python3 -m unittest experiment.tests.test_backend experiment.tests.test_permission
+python3 scripts/smoke_backend.py --output artifacts/r4/backend_smoke.json
+```
+
+本地 process runner 使用 exact argv 和 `shell=false`，但尚无 OS 级网络隔离或 hardened process
+sandbox，因此仍是开发能力验证，不是正式安全边界。
+
 正式 R2 必须在具有至少 120 GiB Docker 数据盘的原生 x86_64 Linux Docker
 host 上运行。安装固定 harness 后先执行 preflight：
 

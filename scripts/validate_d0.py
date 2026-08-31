@@ -119,7 +119,11 @@ def check_internal_consistency() -> Check:
         "docs/archive/v28/experiment/configs/attack_manifest.yaml"
     )["carriers"][0]
     operations = set(load_json_yaml("experiment/schemas/operations.yaml")["operations"])
-    permissions = set(load_json_yaml("experiment/configs/permission.yaml")["operation_permissions"])
+    permissions = set(
+        load_json_yaml("docs/archive/v28/experiment/configs/permission.yaml")[
+            "operation_permissions"
+        ]
+    )
     declared_files = {
         task["reference_patch"]["path"]: task["reference_patch"]["sha256"],
         task["test_patch"]["path"]: task["test_patch"]["sha256"],
