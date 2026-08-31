@@ -100,6 +100,15 @@
     "required_modes": ["baseline", "reference"],
     "required_attempts_per_mode": 2,
     "selection_report": "artifacts/r2/selection_report.json",
-    "private_logs": "Google Drive R2 output bundle"
+    "private_logs": "Google Drive R2 output bundle",
+    "pilot": {
+      "status": "complete",
+      "required_attempts_per_mode": 1,
+      "container_platform": "linux/amd64",
+      "host_policy": "local emulation allowed",
+      "evidence_class": "development_evidence_only",
+      "formal_r2_eligible": false,
+      "summary": "artifacts/r2/pilot_summary.json"
+    }
   }
 }

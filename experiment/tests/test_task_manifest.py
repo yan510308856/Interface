@@ -6,6 +6,7 @@ import copy
 import json
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from experiment import task_runtime
@@ -45,6 +46,15 @@ class R2TaskManifestTests(unittest.TestCase):
                 record["sha256"], task_runtime.sha256_file(task_runtime.ROOT / record["path"])
             )
 
+    def test_pilot_policy_is_explicitly_non_formal(self):
+        pilot = self.manifest["evidence"]["pilot"]
+        self.assertEqual("development_evidence_only", pilot["evidence_class"])
+        self.assertFalse(pilot["formal_r2_eligible"])
+        changed = copy.deepcopy(self.manifest)
+        changed["evidence"]["pilot"]["formal_r2_eligible"] = True
+        with self.assertRaises(task_runtime.TaskConfigError):
+            task_runtime.validate_manifest(changed, self.candidates)
+
     def test_baseline_prediction_is_non_solution_and_reference_uses_gold(self):
         with tempfile.TemporaryDirectory() as temporary:
             destination = Path(temporary) / "prediction.json"
@@ -80,6 +90,58 @@ class R2TaskManifestTests(unittest.TestCase):
         self.assertIn("instance", command)
         self.assertNotIn("bash", command)
         self.assertNotIn("sh", command)
+
+    def test_pilot_command_is_amd64_emulation_and_never_formal_evidence(self):
+        baseline = task_runtime.build_pilot_docker_command(
+            self.manifest, "baseline"
+        )
+        reference = task_runtime.build_pilot_docker_command(
+            self.manifest, "reference"
+        )
+        self.assertIn("linux/amd64", baseline)
+        self.assertIn("--network", baseline)
+        self.assertIn("none", baseline)
+        self.assertIn("git apply /frozen/baseline.patch", baseline[-1])
+        self.assertIn("git apply /frozen/reference.patch", reference[-1])
+        self.assertTrue(
+            task_runtime.pilot_output_matches(
+                "baseline", 1, "2 failed, 13 passed in 0.29s"
+            )
+        )
+        self.assertTrue(
+            task_runtime.pilot_output_matches(
+                "reference", 0, "15 passed in 0.29s"
+            )
+        )
+        self.assertFalse(
+            task_runtime.pilot_output_matches(
+                "reference", 0, "14 passed, 1 skipped in 0.29s"
+            )
+        )
+
+    def test_pilot_run_classifies_missing_test_summary_as_infrastructure_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            completed = task_runtime.subprocess.CompletedProcess(
+                args=["docker"],
+                returncode=1,
+                stdout="Cannot connect to the Docker daemon",
+            )
+            with unittest.mock.patch.object(
+                task_runtime.shutil, "which", return_value="/usr/local/bin/docker"
+            ), unittest.mock.patch.object(
+                task_runtime.subprocess, "run", return_value=completed
+            ), unittest.mock.patch.object(
+                task_runtime.platform, "platform", return_value="test-arm64"
+            ), unittest.mock.patch.object(
+                task_runtime.platform, "machine", return_value="arm64"
+            ):
+                result = task_runtime.run_pilot_attempt(
+                    self.manifest,
+                    mode="baseline",
+                    run_id="pilot-infra-01",
+                    output_dir=Path(temporary),
+                )
+            self.assertEqual("INFRASTRUCTURE_FAILURE", result["status"])
 
     def _report(self, *, resolved: bool, reference: bool) -> dict:
         oracle = self.manifest["task"]["oracle"]

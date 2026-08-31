@@ -165,6 +165,13 @@ def validate_manifest(
     oracle = task.get("oracle", {})
     if not oracle.get("fail_to_pass") or not oracle.get("pass_to_pass"):
         raise TaskConfigError("task oracle must freeze FAIL_TO_PASS and PASS_TO_PASS")
+    pilot = manifest.get("evidence", {}).get("pilot", {})
+    if pilot.get("evidence_class") != "development_evidence_only":
+        raise TaskConfigError("pilot must be marked as development evidence only")
+    if pilot.get("formal_r2_eligible") is not False:
+        raise TaskConfigError("pilot results must be ineligible for formal R2")
+    if pilot.get("required_attempts_per_mode") != 1:
+        raise TaskConfigError("local pilot requires exactly one attempt per mode")
 
 
 def load_and_validate(
@@ -501,6 +508,107 @@ def oracle_matches(
     else:
         problems.append(f"unsupported mode: {mode}")
     return not problems, problems
+
+
+def build_pilot_docker_command(
+    manifest: Mapping[str, Any], mode: str
+) -> list[str]:
+    """Build the local emulation command used only for development evidence."""
+    if mode not in {"baseline", "reference"}:
+        raise TaskConfigError(f"unsupported pilot mode: {mode}")
+    task = manifest["task"]
+    task_dir = ROOT / Path(task["test_patch"]["path"]).parent
+    prepared_commit = task["prepared_image_commit"]
+    script_parts = [
+        "set -eu",
+        "cd /testbed",
+        f"git reset --hard {prepared_commit} >/dev/null",
+        "git apply /frozen/test.patch",
+    ]
+    if mode == "baseline":
+        script_parts.append("git apply /frozen/baseline.patch")
+    else:
+        script_parts.append("git apply /frozen/reference.patch")
+    script_parts.append(
+        "/opt/miniconda3/envs/testbed/bin/pytest -rA "
+        "astropy/modeling/tests/test_separable.py"
+    )
+    return [
+        "docker",
+        "run",
+        "--rm",
+        "--platform",
+        task["docker_image"]["platform"],
+        "--network",
+        "none",
+        "-v",
+        f"{task_dir}:/frozen:ro",
+        task["docker_image"]["reference"],
+        "/bin/bash",
+        "-lc",
+        "; ".join(script_parts),
+    ]
+
+
+def pilot_output_matches(mode: str, exit_code: int, output: str) -> bool:
+    """Check the frozen 15-test development oracle without claiming R2 evidence."""
+    if mode == "baseline":
+        return exit_code == 1 and "2 failed, 13 passed" in output
+    if mode == "reference":
+        return exit_code == 0 and "15 passed" in output
+    raise TaskConfigError(f"unsupported pilot mode: {mode}")
+
+
+def run_pilot_attempt(
+    manifest: Mapping[str, Any], *, mode: str, run_id: str, output_dir: Path
+) -> dict[str, Any]:
+    """Run one amd64-emulated smoke attempt and save a small, non-formal result."""
+    if not RUN_ID.fullmatch(run_id):
+        raise TaskConfigError("run ID must be 3-128 safe filename characters")
+    result_path = output_dir / f"{mode}-{run_id}.json"
+    if result_path.exists():
+        raise TaskConfigError(f"pilot result already exists: {result_path}")
+    if shutil.which("docker") is None:
+        raise InfrastructureError("docker executable not found")
+    command = build_pilot_docker_command(manifest, mode)
+    started = time.monotonic()
+    completed = subprocess.run(
+        command,
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    output = completed.stdout
+    summary_lines = [
+        line.strip()
+        for line in output.splitlines()
+        if re.search(r"(?:failed|passed).+in [0-9.]+s", line)
+    ]
+    matched = pilot_output_matches(mode, completed.returncode, output)
+    if not summary_lines:
+        status = "INFRASTRUCTURE_FAILURE"
+    else:
+        status = "PASS" if matched else "FAIL"
+    result = {
+        "schema_version": "r2-pilot-attempt-v1",
+        "evidence_class": "development_evidence_only",
+        "formal_r2_eligible": False,
+        "status": status,
+        "mode": mode,
+        "run_id": run_id,
+        "host_platform": platform.platform(),
+        "host_architecture": platform.machine().lower(),
+        "container_platform": manifest["task"]["docker_image"]["platform"],
+        "image_reference": manifest["task"]["docker_image"]["reference"],
+        "exit_code": completed.returncode,
+        "duration_seconds": round(time.monotonic() - started, 3),
+        "summary": summary_lines[-1] if summary_lines else "test summary not found",
+        "output_tail": output.splitlines()[-40:],
+    }
+    atomic_json(result_path, result)
+    return result
 
 
 def _run_id_seen(output_dir: Path, run_id: str) -> bool:

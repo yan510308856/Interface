@@ -32,6 +32,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--manifest-only", action="store_true")
     parser.add_argument("--preflight", action="store_true")
+    parser.add_argument(
+        "--pilot",
+        action="store_true",
+        help="run one local linux/amd64 emulation attempt as development evidence only",
+    )
     parser.add_argument("--candidate-index", type=int)
     parser.add_argument("--mode", choices=("baseline", "reference"))
     parser.add_argument("--run-id")
@@ -53,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
             if any(
                 value is not None
                 for value in (args.candidate_index, args.mode, args.run_id)
-            ) or args.preflight:
+            ) or args.preflight or args.pilot:
                 raise task_runtime.TaskConfigError(
                     "--manifest-only cannot be combined with execution options"
                 )
@@ -78,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
             if any(
                 value is not None
                 for value in (args.candidate_index, args.mode, args.run_id)
-            ):
+            ) or args.pilot:
                 raise task_runtime.TaskConfigError(
                     "--preflight cannot be combined with an attempt"
                 )
@@ -98,6 +103,22 @@ def main(argv: list[str] | None = None) -> int:
             raise task_runtime.TaskConfigError(
                 "execution requires " + ", ".join(missing)
             )
+        if args.pilot:
+            if args.candidate_index != manifest["selection"]["selected_candidate_index"]:
+                raise task_runtime.TaskConfigError(
+                    "pilot only supports the frozen selected candidate"
+                )
+            result = task_runtime.run_pilot_attempt(
+                manifest,
+                mode=args.mode,
+                run_id=args.run_id,
+                output_dir=args.output_dir,
+            )
+            print(json.dumps(result, indent=2, sort_keys=True))
+            print("R2 pilot only: this result is not eligible for the formal gate.")
+            if result["status"] == "INFRASTRUCTURE_FAILURE":
+                return 2
+            return 0 if result["status"] == "PASS" else 1
         result, summary = task_runtime.run_candidate(
             candidates,
             manifest,

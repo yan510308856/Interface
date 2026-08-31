@@ -36,6 +36,7 @@ REQUIRED_PATHS = (
     "requirements-r2.txt",
     "artifacts/r2/R2_DECISION.md",
     "artifacts/r2/selection_report.json",
+    "artifacts/r2/pilot_summary.json",
     "docs/archive/v28/experiment/tasks/manifest.yaml",
     "artifacts/d0/D0_DECISION.md",
     "artifacts/d0/digests.json",
