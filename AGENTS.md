@@ -18,8 +18,14 @@ If these documents conflict, stop and report the conflict before editing code.
 
 ## Current State
 
-- Current implementation stage: **R2 — local implementation-feasibility pilot**
-  (`status: incomplete`, `decision: pilot_only`); formal R2 remains unpassed.
+- Current formal stage: **R2 — Clean task selection and freeze** remains unpassed
+  (`status: incomplete`, `decision: pilot_only`) because no native x86_64 replay is
+  available.
+- Selected development route: **Implementation Pilot**. The R5 interface pilot is
+  complete at implementation commit `71ec91d`; the next implementation stage is
+  **R6-P — local fake-model runner and optional Colab Qwen pipeline smoke**.
+- R6-P artifacts are development evidence only and cannot unlock formal R6–R8 or
+  support a four-cell interface-effect claim.
 - **R1 — Qwen / ModelScope / A100 feasibility** passed on 2026-08-30; its frozen
   configuration and evidence summary are recorded in `artifacts/r1/R1_DECISION.md`,
   while the complete private run bundle remains on Google Drive.
@@ -30,7 +36,9 @@ If these documents conflict, stop and report the conflict before editing code.
 - The notebook in `notebooks/` is exploratory support, not the experiment runner
   and not evidence that any R-stage has passed.
 
-Update this section only when the preceding stage has a recorded passing decision.
+Do not advance the formal stage without a recorded formal passing decision. A pilot
+stage may advance only when its decision records `pilot_only`, the formal status,
+the claim limitation, and the next pilot stage.
 
 ## Non-Negotiable Experimental Invariants
 

@@ -45,6 +45,31 @@ R8 冻结四-cell Demo、运行与 review（Colab A100）
 2. permission/shared backend 在接口之前实现，确保两个 adapter 无法获得不同权限；
 3. oracle 先用确定性 fixture 验证，再观察真实模型行为，避免“没有攻击成功”被误当作 oracle 正确。
 
+### 2.1 当前选择的 Implementation Pilot 路线
+
+由于当前没有原生 x86_64 Docker host，正式流程保持在 R2，不降低或重写其门禁。同时选择一条独立
+的实现路线继续验证软件链路：
+
+```text
+R2 local pilot
+ ↓
+R3 paired-task pilot
+ ↓
+R4 backend/permission/audit pilot
+ ↓
+R5 interface-equivalence pilot（complete）
+ ↓
+R6-P agent-loop implementation pilot（next）
+```
+
+这条路线只回答“组件能否按契约组合并产生可重放 artifacts”，不回答 Atomic 与 Restricted Python
+在正式 SWE-bench 环境中的相对效果。所有 pilot artifacts 必须记录
+`evidence_class: development_evidence_only` 和对应的 `formal_rN_eligible: false`；pilot episode 不能
+补计为正式重复、不能进入 R8 四-cell 数据，也不能把 host/emulation 差异解释为 interface effect。
+
+如果未来获得合格 host，应从正式 R2 gate 恢复；无需删除 pilot 代码，但必须使用新的 run IDs、
+fresh workspaces 和独立 formal artifacts。
+
 ## 3. 三个环境的职责
 
 | 环境 | 用途 | 允许保存 | 禁止作为 |
@@ -98,14 +123,16 @@ resolved revision 和文件 digest 决定，不由 Drive 路径决定。
 
 1. 阅读 `AGENTS.md`、`interface29.md` 和本文对应 stage；
 2. 运行 `git status --short --branch`，保留其他 stage 或用户已有修改；
-3. 检查上一个 stage 的 decision 和 required artifacts；没有 `pass` 就停止进入下一 stage；
+3. 检查上一个 stage 的 decision 和 required artifacts；正式路线没有 `pass` 就停止进入下一正式
+   stage。只有本文明确列出的 Implementation Pilot stage 可以在前一 pilot scope 完成后继续；
 4. 创建当前 stage 的独立 branch；若 `.git` 不可写，记录限制，不伪造 branch/commit；
 5. 先实现可离线测试的最小模块，再写薄 CLI，最后才连接 Docker 或 A100；
 6. 使用 machine-readable config，不把 model ID、task ID、路径、seed、budget 写死在 Python 中；
 7. 先运行 narrow unit tests，再运行 stage integration command；
 8. 保存原始 stdout/stderr、exit code 和结构化 report；不得只在 Markdown 中手写“通过”；
 9. 检查 `git diff --check`，生成 stage handoff；
-10. 只有所有硬门禁通过才把 decision 写为 `pass`。
+10. 只有所有正式硬门禁通过才把 decision 写为 `pass`。Pilot 使用 `decision: pilot_only`，并同时
+    记录 pilot status、formal status 与声明限制。
 
 ### 4.2 最小代码结构
 
@@ -708,7 +735,82 @@ backend event”。如果 scripted sequence 运行结果、权限或 final patch
 
 adapters、schemas、tests、equivalence report commit/push GitHub；不更新 Drive。
 
+### 当前 Implementation Pilot decision
+
+R5 pilot 的 scripted equivalence、controlled failures 和三类最小 bypass checks 已全部通过。其
+implementation commit 为 `71ec91d`。因此 R5 的 pilot scope 为 `complete`，下一步进入 R6-P；正式
+R5 仍因正式 R2–R4 未通过而保持 `incomplete`，不能进入正式 R6。
+
+## 10.1 R6-P — Agent-loop implementation pilot
+
+### 目的与声明边界
+
+在不要求原生 x86_64 Docker host、也不冒充正式 R6 的前提下，实现和验证完整 agent loop、统一
+result bundle 与指标重算。R6-P 只产生开发证据；正式 R6 仍由第 11 节定义。
+
+### 运行位置
+
+- Local：fake/scripted model、tiny disposable fixture、runner/unit/integration tests；
+- Colab A100（可选）：加载 R1 frozen Qwen，执行开发性 Clean pipeline smoke；
+- Google Drive（可选）：保存 Colab raw pilot bundles，上传后校验 digest。
+
+R6-P 不要求用户拥有原生 x86_64 host。若 Colab 环境不能提供冻结 task 的官方 Docker oracle，必须
+把 functional result 标为 pilot/non-formal，不得用自定义成功标准替代 official harness。
+
+### 工作
+
+1. 定义 `experiment/schemas/result_bundle.yaml`，冻结 manifest、messages、actions、backend events、
+   patch、oracles、metrics、validation 和 digests 的必需字段；
+2. 实现唯一 `experiment/runner.py::run_episode(effective_config)` 状态机，不为某个 interface 加 task
+   shortcut；
+3. 合并 model、task、permission、operation schema、interface、environment、seed 和 budgets，运行前
+   保存 effective config 与 digest；
+4. 实现 deterministic fake/scripted model，在 fresh fixture 上各运行 Atomic-Clean 与
+   Python-Clean；两者只允许 interface 和 IDs 不同；
+5. 每轮检查 turn/token/wall-clock budget，每个 backend attempt 继续使用 R4 operation budget；
+6. 无论 finish early、parse failure、timeout、task failure 或空 patch，都必须运行 oracle 并完成
+   result bundle；
+7. 从 JSONL 自动计算 action、invalid、operation、deny/error/timeout、tokens、latency、patch 与 oracle
+   metrics，并由 validator 重算核对；
+8. 增加 malformed scripted output，证明 failure path 是受控结果而不是 runner crash；
+9. 可选地在 Colab A100 接入 frozen Qwen；token、GitHub/Drive/ModelScope credential 不得进入 Agent
+   workspace、prompt 或普通日志。
+
+### Target artifacts 与命令
+
+```text
+experiment/runner.py
+experiment/schemas/result_bundle.yaml
+experiment/tests/test_runner.py
+experiment/tests/test_metrics.py
+scripts/run_episode.py
+scripts/validate_result_bundle.py
+artifacts/r6p/runner_summary.json
+artifacts/r6p/R6P_DECISION.md
+```
+
+```bash
+python3 -m unittest experiment.tests.test_runner experiment.tests.test_metrics
+python3 scripts/run_episode.py --config <pilot-clean-config> --model fake --interface atomic
+python3 scripts/run_episode.py --config <pilot-clean-config> --model fake --interface restricted_python
+python3 scripts/validate_result_bundle.py artifacts/r6p/<episode_id>
+```
+
+### Pilot gate
+
+- 两个 fake-model interfaces 都完成 prompt→action→backend→observation→termination→oracle→export；
+- action→operation→observation 可由 logs 重建，metrics 可由 raw events 自动重算；
+- config diff 只包含 interface 和 IDs；
+- malformed、timeout、task failure 与空 patch 都生成完整 bundle；
+- 所有输出声明 `development_evidence_only`、`formal_r6_eligible: false`；
+- 没有真实 secret、非受控目标、silent retry 或 artifact overwrite。
+
+通过此 gate 只表示 R6-P runner 可用于后续开发。它不把 R2–R5 升级为 formal pass，不解锁正式 R7，
+也不证明模型成功修复任务。完成后由 human review 决定继续 R7-P，或等待 formal R2 环境。
+
 ## 11. R6 — 真实 Qwen Clean smoke
+
+本节是正式 R6，目前未解锁。R6-P 的任何运行均不能计入本节 gate。
 
 ### 目的
 
@@ -997,30 +1099,30 @@ next_stage: <R0-R8>
 只有 `decision: pass` 才能进入下一 stage。模型功能失败可以是 R6–R8 的有效 outcome，但 pipeline、
 权限、oracle、config integrity 或 artifact completeness 失败必须 `revise`。
 
+Implementation Pilot handoff 另外必须写 `pilot_status: complete | incomplete | blocked`、
+`decision: pilot_only`、`formal_status`、`formal_eligible: false` 和声明限制。只有本文明确列出的下一
+pilot stage 可以据此继续；`pilot_only` 永远不能解锁同编号或后续的正式 stage。
+
 ## 16. 当前迁移状态
 
-本次只重构 docs，现有代码和 D0 artifacts 尚未按 R0–R8 重新整理。下一次代码任务应先做迁移
-审计，而不是直接继续旧 D1：
-
-1. 将所有模型来源从 Hugging Face 语义迁移到 ModelScope model ID + resolved revision；
-2. 把旧 D0 中的 live model smoke 移到 R1，不再让它阻塞 task/schema 冻结的含义；
-3. 对照 R2/R3 检查现有 task、baseline/reference 和 pair evidence；
-4. 保留可复用 operation/permission/attack schemas，但按 R4/R5 重新标注 gate；
-5. 更新 README、AGENTS current stage、validators 和 decision artifacts；
-6. 在代码迁移完成前，现有 `D0: PASS/REVISE` 均不能代表新协议状态。
+R0 与 R1 已正式通过。正式 R2 因缺少原生 x86_64 重放保持 `incomplete/pilot_only`；R3–R5 的本地
+实现证据不能越过该 gate。当前选择的 Implementation Pilot 已完成 R5，下一代码任务是 R6-P。
+旧 D0 artifacts 继续作为 v28 provenance 保留，不能代表任何 v29 R-stage。
 
 ```text
-status: docs refactor complete; code migration pending
-artifact: docs/aug29experiment.md, docs/interface29.md
-decision: revise
+status: R5 implementation pilot complete; formal R2 remains incomplete
+artifact: artifacts/r5/R5_DECISION.md, artifacts/r5/equivalence_report.json
+decision: pilot_only
 open_risks:
-  - current code/config/artifacts follow superseded D0-D11 protocol
-  - Git branch creation requires a workspace where .git is writable
+  - no native x86_64 official-harness replay
+  - R4 pilot lacks an OS-enforced no-network sandbox
+  - pilot outputs cannot support formal interface-effect claims
 provenance:
-  protocol_revision_date: 2026-08-30
+  protocol_revision_date: 2026-08-31
+  r5_implementation_commit: 71ec91d
   model_host: Colab A100
   model_source: ModelScope
   source_control: GitHub exact commit SHA
   large_artifacts: private Google Drive digest bundles
-next_stage: code migration audit, then R1
+next_stage: R6-P agent-loop implementation pilot
 ```
