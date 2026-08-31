@@ -113,6 +113,22 @@ python3 scripts/smoke_backend.py --output artifacts/r4/backend_smoke.json
 本地 process runner 使用 exact argv 和 `shell=false`，但尚无 OS 级网络隔离或 hardened process
 sandbox，因此仍是开发能力验证，不是正式安全边界。
 
+R5 的本地 pilot 已实现严格 Atomic JSON adapter 和不使用 `eval`/`exec` 的
+Restricted Python AST interpreter。两个接口在 fresh disposable fixtures 上运行同一组
+read→replace→test→diff、permission denial 和 timeout 操作：
+
+```bash
+python3 -m unittest \
+  experiment.tests.test_atomic \
+  experiment.tests.test_restricted_python \
+  experiment.tests.test_interface_equivalence
+python3 scripts/validate_interfaces.py --output artifacts/r5
+```
+
+验证报告比较规范化 backend events、权限、状态、错误、result digest、最终 tree hash 和 diff；
+`open`、`import os`、`subprocess` 三类最小绕过必须在产生 backend event 前被拒绝。报告的
+`PASS` 只表示本地 capability-equivalence pilot 通过；正式 R5 仍被正式 R2–R4 门禁阻塞。
+
 正式 R2 必须在具有至少 120 GiB Docker 数据盘的原生 x86_64 Linux Docker
 host 上运行。安装固定 harness 后先执行 preflight：
 
@@ -142,7 +158,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_d0.py --run-task-validation
 
 ## Demo 完成路径
 
-当前只按 `docs/aug29experiment.md` 的 pilot 分支继续实现和展示。正式路径仍要求 R2
+当前已按 `docs/aug29experiment.md` 实现到本地 R5 pilot。正式路径仍要求 R2
 在原生 x86_64 Docker host 通过后，才可将 R3–R8 的结果称为受控实验阶段证据。
 
 ## 安全与复现

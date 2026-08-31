@@ -57,6 +57,12 @@ artifacts/r3/*
 artifacts/r4/*
 !artifacts/r4/R4_DECISION.md
 !artifacts/r4/backend_smoke.json
+!artifacts/r5/
+artifacts/r5/*
+!artifacts/r5/R5_DECISION.md
+!artifacts/r5/equivalence_report.json
+!artifacts/r5/atomic_trajectory.jsonl
+!artifacts/r5/python_trajectory.jsonl
 docs/archive/*.pdf
 *.pptx
 *.pptx.inspect.ndjson

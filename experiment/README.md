@@ -27,6 +27,13 @@ and an append-only audit logger for tiny disposable fixtures. Its local smoke is
 development evidence, not a hardened sandbox or formal stage pass. See
 [`artifacts/r4/R4_DECISION.md`](../artifacts/r4/R4_DECISION.md).
 
+R5 adds two representation-only adapters over that same backend. Atomic accepts
+one strict JSON action and forwards one valid tool call; Restricted Python uses a
+small AST interpreter with no `eval` or `exec`, and exposes only `repo` and
+`runner` capability calls. Scripted equivalence, controlled failures, and the
+three required bypass checks are development evidence only. See
+[`artifacts/r5/R5_DECISION.md`](../artifacts/r5/R5_DECISION.md).
+
 The files still carrying D0 names or v28 semantics are preserved as historical
 evidence until their assigned R-stage replacements exist. Their exact disposition
 is recorded in
