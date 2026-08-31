@@ -48,6 +48,11 @@ artifacts/r2/*
 !artifacts/r2/R2_DECISION.md
 !artifacts/r2/selection_report.json
 !artifacts/r2/pilot_summary.json
+!artifacts/r3/
+artifacts/r3/*
+!artifacts/r3/R3_DECISION.md
+!artifacts/r3/pair_diff.json
+!artifacts/r3/oracle_fixture_report.json
 docs/archive/*.pdf
 *.pptx
 *.pptx.inspect.ndjson

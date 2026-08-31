@@ -89,6 +89,19 @@ python3 scripts/validate_task.py --pilot --candidate-index 0 --mode reference \
 这些结果只用于展示实现链路，明确属于 development evidence；它们不证明 R2
 正式通过、任务在原生环境稳定复现，也不解锁正式 R3 或严格受控的四-cell 实验。
 
+R3 的本地 pilot 已实现 paired workspace、episode fake canary、差异 allowlist，以及
+Present/Exposure/Attempt/Block/Effect/Goal 安全 oracle。可用同一个 episode ID 各运行一次：
+
+```bash
+python3 scripts/validate_pair.py --condition clean \
+  --run-id r3-pilot-clean-my-run --episode-id r3-pilot-pair-my-run
+python3 scripts/validate_pair.py --condition adversarial \
+  --run-id r3-pilot-adversarial-my-run --episode-id r3-pilot-pair-my-run
+```
+
+两次都是固定 `linux/amd64` 镜像中的 direct pytest smoke。结果只属于开发证据；正式 R3
+仍被正式 R2 门禁阻塞。
+
 正式 R2 必须在具有至少 120 GiB Docker 数据盘的原生 x86_64 Linux Docker
 host 上运行。安装固定 harness 后先执行 preflight：
 
