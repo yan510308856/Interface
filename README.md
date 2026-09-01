@@ -12,8 +12,12 @@
 **R0 — Documentation and workspace baseline** 与 **R1 — Qwen / ModelScope /
 A100 feasibility** 已通过。R1 的冻结配置在两个独立 A100 worker 中完成三个
 固定 prompt、语法解析和 16,384-token context probe，模型 revision、snapshot
-digest、输入 token IDs 与 runtime identity 一致。当前 **R2 降级为本地
-implementation-feasibility pilot**：正式状态保持 `incomplete`，决策为 `pilot_only`。
+digest、输入 token IDs 与 runtime identity 一致。正式实验仍停在 **R2**：状态保持
+`incomplete`，决策为 `pilot_only`。
+
+项目当前选择独立的 **Implementation Pilot** 路线。R5 capability-equivalence pilot 已完成，
+下一步是 **R6-P**：先用 fake model 构建可重放 runner 和 result bundle，再选择性地在 Colab A100
+接入冻结 Qwen 做开发性 pipeline smoke。R6-P 不解锁正式 R6–R8，也不产生四-cell 比较结论。
 现有 D0 代码和 artifacts 仅是 v28 provenance，不代表 v29 实验结果。
 
 ## 先读什么
@@ -113,6 +117,28 @@ python3 scripts/smoke_backend.py --output artifacts/r4/backend_smoke.json
 本地 process runner 使用 exact argv 和 `shell=false`，但尚无 OS 级网络隔离或 hardened process
 sandbox，因此仍是开发能力验证，不是正式安全边界。
 
+R5 的本地 pilot 已实现严格 Atomic JSON adapter 和不使用 `eval`/`exec` 的
+Restricted Python AST interpreter。两个接口在 fresh disposable fixtures 上运行同一组
+read→replace→test→diff、permission denial 和 timeout 操作：
+
+```bash
+python3 -m unittest \
+  experiment.tests.test_atomic \
+  experiment.tests.test_restricted_python \
+  experiment.tests.test_interface_equivalence
+python3 scripts/validate_interfaces.py --output artifacts/r5
+```
+
+验证报告比较规范化 backend events、权限、状态、错误、result digest、最终 tree hash 和 diff；
+`open`、`import os`、`subprocess` 三类最小绕过必须在产生 backend event 前被拒绝。报告的
+`PASS` 表示 R5 Implementation Pilot 的预定范围已完成；正式 R5 仍被正式 R2–R4 门禁阻塞。
+
+R6-P 将实现一个接口无关的 episode runner：合并并冻结 effective config，调用 fake/scripted model，
+经 R5 adapter 和共享 backend 执行动作，追加 observation，始终运行 oracle，并输出可校验的完整
+result bundle。它还必须覆盖 malformed output、timeout、task failure 和空 patch，并从日志自动重算
+actions、operations、tokens、time 与 oracle 字段。可选 Colab Qwen smoke 仍标记为
+`development_evidence_only`；模型修复任务成功不是 pilot gate。
+
 正式 R2 必须在具有至少 120 GiB Docker 数据盘的原生 x86_64 Linux Docker
 host 上运行。安装固定 harness 后先执行 preflight：
 
@@ -142,8 +168,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_d0.py --run-task-validation
 
 ## Demo 完成路径
 
-当前只按 `docs/aug29experiment.md` 的 pilot 分支继续实现和展示。正式路径仍要求 R2
-在原生 x86_64 Docker host 通过后，才可将 R3–R8 的结果称为受控实验阶段证据。
+当前 Implementation Pilot 已完成 R5，下一步是 R6-P。正式路径仍要求 R2 在原生 x86_64
+Docker host 通过后，才可将 R3–R8 的结果称为受控实验阶段证据。两条路线共享代码和安全边界，
+但 artifacts、decision 与研究声明保持分离。
 
 ## 安全与复现
 
