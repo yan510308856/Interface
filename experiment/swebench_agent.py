@@ -83,6 +83,38 @@ def prepare_workspace(workspace: Path, manifest: Mapping[str, Any]) -> dict[str,
     return validate_workspace(workspace, manifest)
 
 
+def materialize_pristine_workspace(
+    source: Path, destination: Path, manifest: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Create a clean local checkout without copying dirty source-worktree files."""
+    source = source.expanduser().resolve()
+    destination = destination.expanduser().resolve()
+    if not source.exists():
+        prepare_workspace(source, manifest)
+    if not source.is_dir():
+        raise AgentTaskError(f"workspace source does not exist: {source}")
+    if destination.exists():
+        raise AgentTaskError(f"pristine destination already exists: {destination}")
+    if _git(["git", "rev-parse", "--is-inside-work-tree"], cwd=source) != "true":
+        raise AgentTaskError("workspace source is not a Git worktree")
+    base_commit = manifest["task"]["base_commit"]
+    _git(["git", "cat-file", "-e", f"{base_commit}^{{commit}}"], cwd=source)
+    source_dirty = bool(_git(["git", "status", "--porcelain"], cwd=source))
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    _git([
+        "git", "clone", "--no-hardlinks", "--no-checkout",
+        str(source), str(destination),
+    ])
+    _git(["git", "checkout", "--detach", base_commit], cwd=destination)
+    identity = validate_workspace(destination, manifest)
+    identity.update({
+        "source_workspace": str(source),
+        "source_worktree_dirty": source_dirty,
+        "materialization": "local_git_clone_at_frozen_commit",
+    })
+    return identity
+
+
 def write_prediction(
     bundle: Path,
     destination: Path,

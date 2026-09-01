@@ -158,7 +158,9 @@ python3 scripts/validate_result_bundle.py /tmp/r6p-local/local-atomic
 Qwen，并按 `Atomic/Clean → Atomic/Adversarial → Restricted Python/Clean → Restricted
 Python/Adversarial` 生成四个独立 bundle 和 prediction。每个 interface 的 Clean/Adversarial
 workspace 来自同一 base commit；只有冻结 carrier 与 episode fake canary 是 adversarial 增量。
-工作副本放在 Colab local scratch，基础 checkout、模型 cache 和不可覆盖的结果保留在 Drive：
+工作副本放在 Colab local scratch，基础 Git checkout、模型 cache 和不可覆盖的结果保留在 Drive。
+Drive checkout 即使有本地未跟踪文件也不会被清理或直接用于实验；入口会从冻结 commit 创建一个
+不包含这些文件的临时 pristine checkout：
 
 ```bash
 python3 scripts/run_r6p_astropy_paired_colab.py \

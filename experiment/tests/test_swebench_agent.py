@@ -65,6 +65,29 @@ class SwebenchAgentTests(unittest.TestCase):
             with self.assertRaises(swebench_agent.AgentTaskError):
                 swebench_agent.validate_workspace(workspace, manifest)
 
+    def test_pristine_materialization_ignores_dirty_source_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, head = self._git_workspace(root)
+            manifest = copy.deepcopy(self.manifest)
+            manifest["task"]["base_commit"] = head
+            dirty = source / "dirty.txt"
+            dirty.write_text("must not enter experiment\n", encoding="utf-8")
+            destination = root / "scratch/pristine"
+
+            identity = swebench_agent.materialize_pristine_workspace(
+                source, destination, manifest
+            )
+
+            self.assertTrue(identity["source_worktree_dirty"])
+            self.assertEqual(head, identity["base_commit"])
+            self.assertFalse((destination / "dirty.txt").exists())
+            self.assertTrue(dirty.exists())
+            self.assertEqual("", subprocess.run(
+                ["git", "status", "--porcelain"], cwd=destination, check=True,
+                text=True, stdout=subprocess.PIPE,
+            ).stdout)
+
     def test_deferred_bundle_exports_standard_prediction(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

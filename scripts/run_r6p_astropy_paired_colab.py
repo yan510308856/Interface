@@ -33,46 +33,17 @@ def _write_json(path: Path, value: object) -> None:
     )
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="experiment/configs/r6p_astropy_clean.yaml")
-    parser.add_argument("--workspace", required=True, help="Reusable GT-free Astropy base checkout")
-    parser.add_argument("--model-cache", required=True, help="Mounted Drive ModelScope cache")
-    parser.add_argument("--output-root", required=True, help="Mounted Drive output directory")
-    parser.add_argument("--run-id", required=True)
-    parser.add_argument("--seed", type=int, default=20260829)
-    parser.add_argument("--scratch-root", default="/content")
-    parser.add_argument("--allow-colab-release-drift", action="store_true")
-    args = parser.parse_args()
-
-    if subprocess.run(
-        ["git", "status", "--porcelain"], cwd=ROOT, text=True,
-        stdout=subprocess.PIPE, check=True,
-    ).stdout:
-        parser.error("Colab experiment clone must have a clean worktree")
-
-    candidates, task_manifest = task_runtime.load_and_validate()
-    del candidates
-    base_workspace = Path(args.workspace).expanduser().resolve()
-    workspace_identity = swebench_agent.prepare_workspace(base_workspace, task_manifest)
-    print(json.dumps({"workspace": workspace_identity}, indent=2, sort_keys=True), flush=True)
-
-    attack_manifest = pair_builder.load_and_validate_attack_manifest()
-    model = model_runtime.load_config(ROOT / "experiment/configs/model.yaml")
-    os.environ[model["cache_policy"]["environment_variable"]] = str(
-        Path(args.model_cache).expanduser().resolve()
-    )
-    runtime_identity = model_runtime.validate_colab_runtime(
-        model, allow_colab_release_drift=args.allow_colab_release_drift
-    )
-    print(json.dumps(runtime_identity, indent=2, sort_keys=True), flush=True)
-
-    output_root = Path(args.output_root).expanduser().resolve()
-    output_root.mkdir(parents=True, exist_ok=True)
-    scratch_root = Path(args.scratch_root).expanduser().resolve()
-    if not scratch_root.is_dir():
-        parser.error(f"scratch root is missing: {scratch_root}")
-
+def _run_cells(
+    *,
+    args: argparse.Namespace,
+    task_manifest: dict[str, object],
+    base_workspace: Path,
+    attack_manifest: dict[str, object],
+    model: dict[str, object],
+    runtime_identity: dict[str, object],
+    output_root: Path,
+    scratch_root: Path,
+) -> list[dict[str, object]]:
     results: list[dict[str, object]] = []
     model_runtime.load_model(model)
     try:
@@ -149,6 +120,68 @@ def main() -> int:
                     )
     finally:
         model_runtime.release_model()
+    return results
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="experiment/configs/r6p_astropy_clean.yaml")
+    parser.add_argument("--workspace", required=True, help="Reusable GT-free Astropy base checkout")
+    parser.add_argument("--model-cache", required=True, help="Mounted Drive ModelScope cache")
+    parser.add_argument("--output-root", required=True, help="Mounted Drive output directory")
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--seed", type=int, default=20260829)
+    parser.add_argument("--scratch-root", default="/content")
+    parser.add_argument("--allow-colab-release-drift", action="store_true")
+    args = parser.parse_args()
+
+    if subprocess.run(
+        ["git", "status", "--porcelain"], cwd=ROOT, text=True,
+        stdout=subprocess.PIPE, check=True,
+    ).stdout:
+        parser.error("Colab experiment clone must have a clean worktree")
+
+    candidates, task_manifest = task_runtime.load_and_validate()
+    del candidates
+    source_workspace = Path(args.workspace).expanduser().resolve()
+
+    attack_manifest = pair_builder.load_and_validate_attack_manifest()
+    model = model_runtime.load_config(ROOT / "experiment/configs/model.yaml")
+    os.environ[model["cache_policy"]["environment_variable"]] = str(
+        Path(args.model_cache).expanduser().resolve()
+    )
+    runtime_identity = model_runtime.validate_colab_runtime(
+        model, allow_colab_release_drift=args.allow_colab_release_drift
+    )
+    print(json.dumps(runtime_identity, indent=2, sort_keys=True), flush=True)
+
+    output_root = Path(args.output_root).expanduser().resolve()
+    output_root.mkdir(parents=True, exist_ok=True)
+    scratch_root = Path(args.scratch_root).expanduser().resolve()
+    if not scratch_root.is_dir():
+        parser.error(f"scratch root is missing: {scratch_root}")
+
+    with tempfile.TemporaryDirectory(
+        prefix="r6p-pristine-astropy-", dir=scratch_root
+    ) as temporary:
+        base_workspace = Path(temporary) / "workspace"
+        workspace_identity = swebench_agent.materialize_pristine_workspace(
+            source_workspace, base_workspace, task_manifest
+        )
+        print(
+            json.dumps({"workspace": workspace_identity}, indent=2, sort_keys=True),
+            flush=True,
+        )
+        results = _run_cells(
+            args=args,
+            task_manifest=task_manifest,
+            base_workspace=base_workspace,
+            attack_manifest=attack_manifest,
+            model=model,
+            runtime_identity=runtime_identity,
+            output_root=output_root,
+            scratch_root=scratch_root,
+        )
 
     print(json.dumps(results, indent=2, sort_keys=True))
     return 0 if all(
