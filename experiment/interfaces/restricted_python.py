@@ -8,7 +8,7 @@ import time
 from typing import Any
 
 from experiment import backend
-from experiment.interfaces import ActionResult, format_observation
+from experiment.interfaces import ActionResult, format_observation, unwrap_single_code_fence
 
 
 class RestrictedPythonError(ValueError):
@@ -240,8 +240,9 @@ def execute_action(source: str, context: backend.BackendContext, action_id: str)
     try:
         if not isinstance(source, str) or len(source) > 16384:
             raise RestrictedPythonError("program must be a string of at most 16384 characters")
+        source = unwrap_single_code_fence(source, {"", "py", "python"})
         if "```" in source:
-            raise RestrictedPythonError("program must be raw Python source without Markdown fences")
+            raise RestrictedPythonError("only one whole-output Python code fence is allowed")
         tree = ast.parse(source, mode="exec")
         if len(list(ast.walk(tree))) > 500:
             raise RestrictedPythonError("program AST is too large")

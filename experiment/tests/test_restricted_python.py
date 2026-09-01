@@ -49,12 +49,41 @@ class RestrictedPythonTests(unittest.TestCase):
         self.assertEqual([], self.logger.read_events())
         self.assertFalse((self.repo / "x").exists())
 
-    def test_markdown_fence_gets_actionable_feedback(self):
+    def test_one_whole_output_python_fence_is_format_only(self):
         result = restricted_python.execute_action(
             '```python\nrepo.read_file("sample.py")\n```', self.context, "fenced"
         )
-        self.assertEqual("invalid", result.parse_status)
-        self.assertIn("without Markdown fences", result.error["message"])
+        self.assertEqual("ok", result.parse_status)
+        self.assertEqual(1, len(result.backend_op_ids))
+
+    def test_qwen_fenced_clean_action_executes_unchanged_payload(self):
+        source = '''```python
+result = repo.read_file("sample.py")
+if result["ok"]:
+    content = result["result"]["content"]
+    if "VALUE = 1" in content:
+        repo.replace_text("sample.py", "VALUE = 1", "VALUE = 2")
+        finish("done")
+    else:
+        finish("VALUE = 1 not found in sample.py")
+else:
+    finish("failed to read sample.py")
+```'''
+        result = restricted_python.execute_action(source, self.context, "qwen-fenced")
+        self.assertEqual("finish", result.parse_status)
+        self.assertEqual(2, len(result.backend_op_ids))
+        self.assertEqual("VALUE = 2\n", (self.repo / "sample.py").read_text(encoding="utf-8"))
+
+    def test_fence_with_prose_or_wrong_language_is_rejected(self):
+        programs = (
+            'Here is code:\n```python\nrepo.read_file("sample.py")\n```',
+            '```javascript\nrepo.read_file("sample.py")\n```',
+            '```python\nrepo.read_file("sample.py")\n```\n```python\nfinish("done")\n```',
+        )
+        for number, source in enumerate(programs):
+            with self.subTest(source=source):
+                result = restricted_python.execute_action(source, self.context, f"fence-{number}")
+                self.assertEqual("invalid", result.parse_status)
         self.assertEqual([], self.logger.read_events())
 
     def test_loop_limit_is_enforced_before_body_execution(self):

@@ -50,6 +50,18 @@ class AtomicTests(unittest.TestCase):
         self.assertIn("literal string 'tool_call'", result.error["message"])
         self.assertEqual([], self.logger.read_events())
 
+    def test_one_whole_output_json_fence_is_format_only(self):
+        source = '```json\n{"type":"tool_call","operation":"read_file","arguments":{"path":"sample.py"}}\n```'
+        result = atomic.execute_action(source, self.context, "fenced")
+        self.assertEqual("ok", result.parse_status)
+        self.assertEqual(1, len(result.backend_op_ids))
+
+    def test_fence_with_surrounding_prose_is_rejected(self):
+        source = 'Here is the action:\n```json\n{"type":"finish","message":"done"}\n```'
+        result = atomic.execute_action(source, self.context, "prose")
+        self.assertEqual("invalid", result.parse_status)
+        self.assertEqual([], self.logger.read_events())
+
     def test_permission_denial_is_returned_and_audited(self):
         source = json.dumps({"type": "tool_call", "operation": "read_file", "arguments": {"path": "../secret"}})
         result = atomic.execute_action(source, self.context, "denied")

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 from experiment import backend
-from experiment.interfaces import ActionResult, format_observation
+from experiment.interfaces import ActionResult, format_observation, unwrap_single_code_fence
 
 
 def _invalid(action_id: str, started: float, message: str) -> ActionResult:
@@ -22,6 +22,7 @@ def _invalid(action_id: str, started: float, message: str) -> ActionResult:
 def execute_action(source: str, context: backend.BackendContext, action_id: str) -> ActionResult:
     """Parse and execute one Atomic action without performing adapter-side I/O."""
     started = time.monotonic()
+    source = unwrap_single_code_fence(source, {"", "json"})
     try:
         action = json.loads(source)
     except (json.JSONDecodeError, TypeError) as exc:

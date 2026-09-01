@@ -11,6 +11,26 @@ from typing import Any
 OBSERVATION_CHARACTER_LIMIT = 8192
 
 
+def unwrap_single_code_fence(source: Any, allowed_languages: set[str]) -> Any:
+    """Remove one whole-output Markdown fence without changing its payload."""
+    if not isinstance(source, str):
+        return source
+    stripped = source.strip()
+    lines = stripped.splitlines()
+    if len(lines) < 3 or lines[-1].strip() != "```":
+        return source
+    opening = lines[0].strip()
+    if not opening.startswith("```"):
+        return source
+    language = opening[3:].strip().lower()
+    if language not in allowed_languages:
+        return source
+    payload = "\n".join(lines[1:-1])
+    if "```" in payload:
+        return source
+    return payload
+
+
 def format_observation(responses: list[dict[str, Any]]) -> str:
     """Return a deterministic JSON observation with an exact character bound."""
     raw = json.dumps(responses, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

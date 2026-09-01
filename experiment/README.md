@@ -45,7 +45,10 @@ fake-model fixtures, controlled failure paths, and an optional Colab A100 Qwen
 smoke. The calibration keeps the strict Atomic JSON and Restricted Python parsers, the shared
 backend, task, and equal budgets. It adds interface-specific contract examples and
 uses an equal 512-token per-action generation limit for both interfaces; the R1
-model identity and runtime freeze remain unchanged. Every output must still declare
+model identity and runtime freeze remain unchanged. Both adapters apply the same
+format-only rule: one code fence wrapping the entire JSON/program may be removed,
+while prose outside the fence or multiple fences remain invalid. Raw model output
+is still preserved unchanged in the result bundle. Every output must still declare
 `development_evidence_only` and `formal_r6_eligible: false`. It cannot be included
 in a formal four-cell result.
 
