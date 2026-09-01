@@ -14,6 +14,12 @@
       "failure": "current Colab release label differed from the R1 session while Python, packages, Torch, CUDA, driver, GPU, and memory matched",
       "resolution": "add an explicit pilot-only release-drift flag, retain fail-closed checks for every compute identity field, and record actual identity plus drift in each bundle",
       "full_test_status": "PASS (72 tests)"
+    },
+    {
+      "commit": "80e0f92",
+      "failure": "after successful Qwen load, final patch collection decoded an oracle-generated .pyc file as UTF-8 and raised UnicodeDecodeError",
+      "resolution": "freeze the agent patch before oracle execution, suppress Python bytecode in approved processes, ignore cache paths, and represent real binary changes without text decoding",
+      "full_test_status": "PASS (73 tests)"
     }
   ],
   "evidence_class": "development_evidence_only",

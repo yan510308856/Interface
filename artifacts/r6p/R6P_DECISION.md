@@ -4,7 +4,7 @@ status: complete (pilot scope); formal R6 remains incomplete
 artifact: `artifacts/r6p/runner_summary.json`; implementation at `fa5dced`  
 decision: pilot_only  
 open_risks: real Qwen Colab pipeline has not yet been run from the pushed commit; frozen SWE-bench oracle remains unavailable without the formal R2 x86_64 Docker host  
-provenance: implementation `fa5dced`; missing-import failure fixed at `b10585c`; audited release-only drift support added at `60ad57b`; 72 offline tests passed; repository check and diff check passed; six fresh fake bundles (Atomic Clean, Restricted Python Clean, malformed, model timeout, task failure, empty patch) passed digest and metric recomputation validation  
+provenance: implementation `fa5dced`; missing-import failure fixed at `b10585c`; audited release-only drift support added at `60ad57b`; binary workspace handling fixed at `80e0f92`; 73 offline tests passed; repository check and diff check passed; six fresh fake bundles (Atomic Clean, Restricted Python Clean, malformed, model timeout, task failure, empty patch) passed digest and metric recomputation validation  
 next_stage: user-run R6-P Qwen Clean pipeline smoke on Colab A100, then review the two Drive bundles; formal path remains R2
 
 ## Decision
@@ -41,3 +41,11 @@ pilot-only `--allow-colab-release-drift` option. It permits only that label to
 differ, records the expected and actual values in both bundles, and continues to
 reject any compute or package drift. This exception is not available as formal R6
 evidence and does not modify the frozen R1 configuration.
+
+The following run loaded the frozen Qwen model successfully, then exposed a runner
+bug during final patch collection: the external Python oracle created a binary
+`.pyc`, which the workspace snapshot attempted to decode as UTF-8. Commit `80e0f92`
+freezes agent effects before oracle execution, disables bytecode creation for all
+approved Python processes, excludes cache paths, and emits a deterministic marker
+for any genuine binary change. The failed `r6p-qwen-001` directory is retained as
+setup/implementation-failure evidence and must not be overwritten.
