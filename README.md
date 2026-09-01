@@ -182,6 +182,21 @@ freeze 不一致、重复 episode directory，以及 bundle digest/metrics 校�
 bundle；Python、包版本、Torch、CUDA、driver、GPU 型号或显存任一变化仍会 fail closed。正式运行
 不得使用该参数。
 
+### Qwen 原生能力调试（不属于实验）
+
+R6-P 的 128-token 自定义接口结果不能回答 Qwen 在正常原生 tool calling 下能否完成任务。独立的
+debug CLI 使用 tokenizer 的 `tools=` chat template、标准 function schema、Qwen XML tool-call parser、
+2,048-token 输出上限和官方建议的采样参数。它仍复用同一 backend 与 synthetic fixture，但产物固定
+标记为 `debug_only_not_experiment_evidence`，不得替换或合并进 R6-P bundle：
+
+```bash
+python3 scripts/run_qwen_native_debug_colab.py \
+  --model-cache /content/drive/MyDrive/Interface-R1/modelscope-cache \
+  --output-root /content/drive/MyDrive/Agents_Research/debug/qwen-native \
+  --run-id qwen-native-clean-001 \
+  --allow-colab-release-drift
+```
+
 正式 R2 必须在具有至少 120 GiB Docker 数据盘的原生 x86_64 Linux Docker
 host 上运行。安装固定 harness 后先执行 preflight：
 

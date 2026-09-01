@@ -588,6 +588,72 @@ def generate(messages: Sequence[Mapping[str, str]], config: Mapping[str, Any]) -
     return result
 
 
+def generate_with_tools(
+    messages: Sequence[Mapping[str, Any]],
+    tools: Sequence[Mapping[str, Any]],
+    config: Mapping[str, Any],
+    *,
+    max_output_tokens: int = 2048,
+) -> dict[str, Any]:
+    """Generate with the tokenizer's native function-tool chat template.
+
+    This is a debug-only capability probe. It deliberately does not alter the
+    frozen R6-P generation settings or qualify as experiment evidence.
+    """
+    if _ACTIVE is None:
+        raise RuntimeError("load_model(config) must be called before generate_with_tools")
+    validate_config(config)
+    if not 1 <= max_output_tokens < config["context_limit"]:
+        raise ValueError("debug max_output_tokens must fit within context_limit")
+    model = _ACTIVE["model"]
+    tokenizer = _ACTIVE["tokenizer"]
+    torch = _ACTIVE["torch"]
+    encoded = tokenizer.apply_chat_template(
+        list(messages),
+        tools=list(tools),
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt",
+    )
+    input_ids = encoded["input_ids"]
+    prompt_tokens = int(input_ids.shape[-1])
+    if prompt_tokens + max_output_tokens > config["context_limit"]:
+        raise RuntimeError("native-tool prompt plus debug output exceeds context_limit")
+    encoded = {key: value.to("cuda:0") for key, value in encoded.items()}
+    torch.cuda.synchronize()
+    started = time.monotonic()
+    with torch.inference_mode():
+        output = model.generate(
+            **encoded,
+            max_new_tokens=max_output_tokens,
+            do_sample=True,
+            temperature=0.7,
+            top_p=0.8,
+            top_k=20,
+            repetition_penalty=1.05,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+    torch.cuda.synchronize()
+    seconds = time.monotonic() - started
+    new_ids = output[0, prompt_tokens:]
+    output_ids = [int(value) for value in new_ids.tolist()]
+    text = tokenizer.decode(new_ids, skip_special_tokens=True)
+    result = {
+        "text": text,
+        "prompt_tokens": prompt_tokens,
+        "output_tokens": len(output_ids),
+        "input_token_ids_sha256": _input_digest([int(value) for value in input_ids[0].tolist()]),
+        "output_token_ids_sha256": _input_digest(output_ids),
+        "generation_seconds": round(seconds, 6),
+        "tokens_per_second": round(len(output_ids) / seconds, 6) if seconds else None,
+        "finish_reason": "eos" if tokenizer.eos_token_id in output_ids else "length",
+        "debug_only": True,
+    }
+    _ACTIVE["generations"].append(result)
+    return result
+
+
 def run_context_probe(config: Mapping[str, Any]) -> dict[str, Any]:
     """Exercise the complete planned context with one generated token."""
     if _ACTIVE is None:
