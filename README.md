@@ -163,7 +163,7 @@ drive.mount("/content/drive")
 ```
 
 ```bash
-git clone https://github.com/yan510308856/Agents_Research.git /content/Agents_Research
+git clone https://github.com/yan510308856/Interface.git /content/Agents_Research
 cd /content/Agents_Research
 git checkout <R6P_COMMIT_SHA>
 python3 -m pip install -r requirements.txt
