@@ -4,7 +4,7 @@ status: complete (pilot scope); formal R6 remains incomplete
 artifact: `artifacts/r6p/runner_summary.json`; implementation at `fa5dced`  
 decision: pilot_only  
 open_risks: real Qwen Colab pipeline has not yet been run from the pushed commit; frozen SWE-bench oracle remains unavailable without the formal R2 x86_64 Docker host  
-provenance: implementation `fa5dced`; Colab pre-load failure reproduced and fixed at `b10585c`; 70 offline tests passed after the hotfix; repository check and diff check passed; six fresh fake bundles (Atomic Clean, Restricted Python Clean, malformed, model timeout, task failure, empty patch) passed digest and metric recomputation validation  
+provenance: implementation `fa5dced`; missing-import failure fixed at `b10585c`; audited release-only drift support added at `60ad57b`; 72 offline tests passed; repository check and diff check passed; six fresh fake bundles (Atomic Clean, Restricted Python Clean, malformed, model timeout, task failure, empty patch) passed digest and metric recomputation validation  
 next_stage: user-run R6-P Qwen Clean pipeline smoke on Colab A100, then review the two Drive bundles; formal path remains R2
 
 ## Decision
@@ -33,3 +33,11 @@ Commit `b10585c` adds the missing import and a regression test that executes the
 package-version and frozen-runtime validation path. No episode bundle was created
 by the failed invocation, so it is an implementation/setup failure rather than an
 agent or model outcome.
+
+The next invocation reached the intended identity gate. Its Colab release label was
+one daily image newer than R1, while Python, packages, Torch, CUDA, NVIDIA driver,
+GPU model, and GPU memory matched exactly. Commit `60ad57b` adds the explicit
+pilot-only `--allow-colab-release-drift` option. It permits only that label to
+differ, records the expected and actual values in both bundles, and continues to
+reject any compute or package drift. This exception is not available as formal R6
+evidence and does not modify the frozen R1 configuration.

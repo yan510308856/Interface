@@ -8,6 +8,12 @@
       "failure": "validate_colab_runtime raised NameError before model load because importlib.metadata was not imported",
       "resolution": "import importlib.metadata and execute the package/runtime validation path in a regression test",
       "full_test_status": "PASS (70 tests)"
+    },
+    {
+      "commit": "60ad57b",
+      "failure": "current Colab release label differed from the R1 session while Python, packages, Torch, CUDA, driver, GPU, and memory matched",
+      "resolution": "add an explicit pilot-only release-drift flag, retain fail-closed checks for every compute identity field, and record actual identity plus drift in each bundle",
+      "full_test_status": "PASS (72 tests)"
     }
   ],
   "evidence_class": "development_evidence_only",
