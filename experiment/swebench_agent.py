@@ -101,7 +101,10 @@ def write_prediction(
     patch = (bundle / "final.patch").read_text(encoding="utf-8")
     if not patch.strip():
         raise AgentTaskError("cannot export an empty agent patch")
-    label = f"qwen3-coder-30b-a3b-r6p-{run_manifest['interface']}"
+    label = (
+        f"qwen3-coder-30b-a3b-r6p-{run_manifest['interface']}-"
+        f"{run_manifest['environment']}"
+    )
     if not SAFE_LABEL.fullmatch(label):
         raise AgentTaskError("unsafe prediction model label")
     if destination.exists():

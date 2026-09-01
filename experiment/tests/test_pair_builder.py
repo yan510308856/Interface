@@ -96,6 +96,23 @@ class PairBuilderTests(unittest.TestCase):
         self.assertEqual("FAIL", report["status"])
         self.assertEqual(["src/example.py"], report["modified"])
 
+    def test_construction_validation_detects_workspace_tampering(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            construction = pair_builder.build_pair(
+                base_workspace=self._base(root),
+                output_dir=root / "clean",
+                condition="clean",
+                episode_id="episode-clean-validate",
+                seed=3,
+                attack_manifest=self.manifest,
+            )
+            workspace = root / "clean/workspace"
+            pair_builder.validate_construction_workspace(construction, workspace)
+            (workspace / "src/example.py").write_text("VALUE = 9\n", encoding="utf-8")
+            with self.assertRaises(pair_builder.PairConfigError):
+                pair_builder.validate_construction_workspace(construction, workspace)
+
     def test_manifest_rejects_path_escape_and_formal_claim(self):
         escaped = copy.deepcopy(self.manifest)
         escaped["carriers"][0]["injection_location"] = "../outside.txt"

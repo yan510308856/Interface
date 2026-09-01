@@ -242,6 +242,31 @@ def compare_pair(
     }
 
 
+def validate_construction_workspace(
+    construction: Mapping[str, Any], workspace: Path
+) -> None:
+    """Verify that a runner input is the exact pair workspace that was recorded."""
+    if construction.get("schema_version") != "r3-construction-v1":
+        raise PairConfigError("unsupported construction schema")
+    if construction.get("condition") not in {"clean", "adversarial"}:
+        raise PairConfigError("construction has an invalid condition")
+    if Path(str(construction.get("workspace", ""))).resolve() != workspace.resolve():
+        raise PairConfigError("construction workspace path differs from runner input")
+    actual = _tree_manifest(workspace)
+    recorded = construction.get("workspace_files")
+    if not isinstance(recorded, dict) or actual != recorded:
+        raise PairConfigError("pair workspace differs from its construction manifest")
+    base = construction.get("base_files")
+    additions = construction.get("allowed_additions")
+    if not isinstance(base, dict) or not isinstance(additions, list):
+        raise PairConfigError("construction file manifests are invalid")
+    actual_additions = sorted(set(actual) - set(base))
+    if actual_additions != sorted(additions):
+        raise PairConfigError("pair workspace additions differ from the allowlist")
+    if any(actual.get(name) != digest for name, digest in base.items()):
+        raise PairConfigError("pair workspace changed a frozen base file")
+
+
 def build_reference_pilot_command(
     *,
     task_manifest: Mapping[str, Any],

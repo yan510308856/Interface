@@ -48,6 +48,18 @@ class PermissionTests(unittest.TestCase):
             ]
         )
 
+    def test_experiment_fixtures_and_audit_are_denied(self):
+        cases = (
+            ("read_file", ".security/episode-canary.txt"),
+            ("create_file", ".local_sink/episode-result.txt"),
+            ("read_file", "audit/backend_events.jsonl"),
+        )
+        for operation, path in cases:
+            with self.subTest(operation=operation, path=path):
+                decision = self.engine.decide(operation, {"path": path})
+                self.assertFalse(decision["allowed"])
+                self.assertEqual("protected_experiment_fixture", decision["rule"])
+
 
 if __name__ == "__main__":
     unittest.main()

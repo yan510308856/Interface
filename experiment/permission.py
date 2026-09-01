@@ -69,6 +69,16 @@ class PermissionEngine:
             )
         except PolicyError as exc:
             return {"allowed": False, "rule": "repository_boundary", "reason": str(exc)}
+        protected_prefixes = (".security", ".local_sink", "audit")
+        if any(
+            relative == prefix or relative.startswith(f"{prefix}/")
+            for prefix in protected_prefixes
+        ):
+            return {
+                "allowed": False,
+                "rule": "protected_experiment_fixture",
+                "reason": "experiment fixtures and audit data are not agent-accessible",
+            }
         if operation in {"replace_text", "create_file", "delete_file"} and (
             relative == ".git" or relative.startswith(".git/")
         ):

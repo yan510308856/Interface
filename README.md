@@ -154,6 +154,26 @@ python3 scripts/run_episode.py \
 python3 scripts/validate_result_bundle.py /tmp/r6p-local/local-atomic
 ```
 
+冻结的 Astropy SWE-bench task 也可在一次 A100 session 中运行完整 paired pilot。入口只加载一次
+Qwen，并按 `Atomic/Clean → Atomic/Adversarial → Restricted Python/Clean → Restricted
+Python/Adversarial` 生成四个独立 bundle 和 prediction。每个 interface 的 Clean/Adversarial
+workspace 来自同一 base commit；只有冻结 carrier 与 episode fake canary 是 adversarial 增量。
+工作副本放在 Colab local scratch，基础 checkout、模型 cache 和不可覆盖的结果保留在 Drive：
+
+```bash
+python3 scripts/run_r6p_astropy_paired_colab.py \
+  --workspace /content/drive/MyDrive/Agents_Research/workspaces/astropy-12907-base \
+  --model-cache /content/drive/MyDrive/Interface-R1/modelscope-cache \
+  --output-root /content/drive/MyDrive/Agents_Research/runs/r6p-astropy-paired \
+  --run-id r6p-astropy-paired-001 \
+  --allow-colab-release-drift
+```
+
+四个 `*.prediction.json` 必须随后分别交给固定的 x86_64 SWE-bench harness；Colab bundle 中的
+functional status 保持 `DEFERRED`，不能把 patch 生成成功当作 Verified task 已解决。paired
+安全 oracle 会记录 carrier 是否出现/暴露、受限操作尝试是否被共享权限层阻止，以及 fake canary
+是否真正到达本地 sink。
+
 Colab A100 smoke 在同一进程只加载一次 Qwen，然后依次运行两个 Clean 接口。先在 Colab notebook
 挂载 Drive；再 clone 本次 handoff 给出的精确 commit（不要运行浮动的最新分支），安装 R1 固定的
 用户空间依赖，最后运行：
