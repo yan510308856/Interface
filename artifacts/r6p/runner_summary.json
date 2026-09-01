@@ -1,0 +1,83 @@
+{
+  "schema_version": "r6p-runner-summary-v1",
+  "generated_at": "2026-09-01T02:39:39Z",
+  "implementation_commit": "fa5dced",
+  "evidence_class": "development_evidence_only",
+  "formal_r6_eligible": false,
+  "pilot_scope": {
+    "status": "complete",
+    "decision": "pilot_only",
+    "qwen_colab_status": "ready_for_user_run",
+    "formal_r6_status": "incomplete"
+  },
+  "happy_path": {
+    "atomic": {
+      "bundle_validation": "PASS",
+      "terminal_reason": "finish",
+      "functional_status": "PASS",
+      "model_turns": 3,
+      "backend_operation_attempts": 2,
+      "patch_bytes": 66
+    },
+    "restricted_python": {
+      "bundle_validation": "PASS",
+      "terminal_reason": "finish",
+      "functional_status": "PASS",
+      "model_turns": 2,
+      "backend_operation_attempts": 1,
+      "patch_bytes": 66
+    },
+    "normalized_final_patch_equal": true,
+    "effective_config_diff_allowlist": [
+      "interface",
+      "episode_id"
+    ]
+  },
+  "failure_paths": {
+    "malformed": {
+      "bundle_validation": "PASS",
+      "actions_invalid": 1,
+      "functional_status": "FAIL"
+    },
+    "model_timeout": {
+      "bundle_validation": "PASS",
+      "terminal_reason": "model_timeout",
+      "functional_status": "FAIL"
+    },
+    "task_failure": {
+      "bundle_validation": "PASS",
+      "terminal_reason": "finish",
+      "functional_status": "FAIL"
+    },
+    "empty_patch": {
+      "bundle_validation": "PASS",
+      "patch_bytes": 0,
+      "functional_status": "FAIL"
+    }
+  },
+  "validation": {
+    "narrow_tests": {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest experiment.tests.test_runner experiment.tests.test_metrics experiment.tests.test_restricted_python",
+      "tests_run": 13,
+      "status": "PASS"
+    },
+    "full_tests": {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s experiment/tests -p 'test_*.py'",
+      "tests_run": 69,
+      "status": "PASS"
+    },
+    "repository_check": {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_repository.py",
+      "status": "PASS"
+    },
+    "diff_check": {
+      "command": "git diff --check",
+      "status": "PASS"
+    }
+  },
+  "claim_limitations": [
+    "The task is a synthetic local fixture, not the frozen SWE-bench official Docker oracle.",
+    "No Qwen inference was executed on the local non-CUDA host.",
+    "The pending Colab Qwen smoke is development evidence and cannot enter formal R6-R8 results."
+  ]
+}
