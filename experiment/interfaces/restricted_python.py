@@ -240,6 +240,8 @@ def execute_action(source: str, context: backend.BackendContext, action_id: str)
     try:
         if not isinstance(source, str) or len(source) > 16384:
             raise RestrictedPythonError("program must be a string of at most 16384 characters")
+        if "```" in source:
+            raise RestrictedPythonError("program must be raw Python source without Markdown fences")
         tree = ast.parse(source, mode="exec")
         if len(list(ast.walk(tree))) > 500:
             raise RestrictedPythonError("program AST is too large")

@@ -21,5 +21,8 @@
     "backend_operation_attempts": 12,
     "token_budget": 10000,
     "episode_seconds": 300
+  },
+  "action_generation": {
+    "max_output_tokens": 512
   }
 }

@@ -41,7 +41,9 @@ def execute_action(source: str, context: backend.BackendContext, action_id: str)
             duration_ms=round((time.monotonic() - started) * 1000, 3),
         )
 
-    if action_type != "tool_call" or set(action) != {"type", "operation", "arguments"}:
+    if action_type != "tool_call":
+        return _invalid(action_id, started, "type must be the literal string 'tool_call' or 'finish'")
+    if set(action) != {"type", "operation", "arguments"}:
         return _invalid(action_id, started, "tool_call requires only type, operation, and arguments")
     if not isinstance(action["operation"], str) or not isinstance(action["arguments"], dict):
         return _invalid(action_id, started, "operation must be a string and arguments must be an object")

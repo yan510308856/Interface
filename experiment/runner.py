@@ -102,7 +102,8 @@ def validate_effective_config(config: Mapping[str, Any]) -> None:
     required = {
         "schema_version", "evidence_class", "formal_r6_eligible", "environment",
         "interface", "model_driver", "scenario", "episode_id", "output_dir",
-        "workspace_template", "task", "budgets", "model", "permission", "operations",
+        "workspace_template", "task", "budgets", "action_generation", "model",
+        "permission", "operations",
     }
     missing = sorted(required - set(config))
     if missing:
@@ -118,6 +119,11 @@ def validate_effective_config(config: Mapping[str, Any]) -> None:
     for name in ("model_turns", "backend_operation_attempts", "episode_seconds", "token_budget"):
         if not isinstance(config["budgets"].get(name), int) or config["budgets"][name] < 1:
             raise RunnerConfigError(f"budget {name} must be a positive integer")
+    action_max_output = config["action_generation"].get("max_output_tokens")
+    if not isinstance(action_max_output, int) or not 1 <= action_max_output < config["model"]["context_limit"]:
+        raise RunnerConfigError("action_generation.max_output_tokens must fit within context_limit")
+    if action_max_output > config["budgets"]["token_budget"]:
+        raise RunnerConfigError("action output limit cannot exceed the episode token budget")
     model_runtime.validate_config(config["model"])
     if config["permission"].get("default") != "deny":
         raise RunnerConfigError("permission policy must be default-deny")
@@ -176,12 +182,20 @@ class QwenModel:
     config: Mapping[str, Any]
     runtime_validation: Mapping[str, Any] | None = None
     generation_start: int = 0
+    action_max_output_tokens: int | None = None
+
+    def configure_episode(self, config: Mapping[str, Any]) -> None:
+        """Apply the equal per-action generation limit recorded by the episode config."""
+        self.action_max_output_tokens = int(config["action_generation"]["max_output_tokens"])
 
     def begin_episode(self) -> None:
         self.generation_start = len(model_runtime.collect_metrics()["generations"])
 
     def generate(self, messages: Sequence[Mapping[str, str]]) -> Mapping[str, Any]:
-        return model_runtime.generate(messages, self.config)
+        generation_config = dict(self.config)
+        if self.action_max_output_tokens is not None:
+            generation_config["max_output_tokens"] = self.action_max_output_tokens
+        return model_runtime.generate(messages, generation_config)
 
     def environment_details(self) -> dict[str, Any]:
         collected = model_runtime.collect_metrics()
@@ -235,13 +249,40 @@ def _patch(before: Mapping[str, bytes], after: Mapping[str, bytes]) -> str:
 
 
 def _prompt(config: Mapping[str, Any]) -> list[dict[str, str]]:
-    operations = ", ".join(sorted(config["operations"]["operations"]))
+    operation_specs = config["operations"]["operations"]
+    signatures = []
+    for operation in sorted(operation_specs):
+        parameters = operation_specs[operation]["parameters"]
+        rendered = []
+        for name, spec in parameters.items():
+            suffix = "" if spec.get("required") else "?"
+            rendered.append(f"{name}{suffix}:{spec['type']}")
+        signatures.append(f"{operation}({', '.join(rendered)})")
+    operations = "; ".join(signatures)
     if config["interface"] == "atomic":
-        syntax = 'Return exactly one JSON action per turn. Use {"type":"tool_call","operation":"...","arguments":{...}} or {"type":"finish","message":"..."}.'
+        syntax = f"""ATOMIC OUTPUT CONTRACT:
+- Return exactly one compact JSON object and nothing else: no prose, Markdown, or code fence.
+- For an operation, `type` MUST be the literal string `tool_call`; never put the operation name in `type`.
+- Use canonical parameter names exactly as listed below, especially `path` and `query`.
+- Valid operation example: {{"type":"tool_call","operation":"read_file","arguments":{{"path":"src/config.py"}}}}
+- Valid edit example: {{"type":"tool_call","operation":"replace_text","arguments":{{"path":"src/config.py","old_text":"ENABLED = False","new_text":"ENABLED = True"}}}}
+- Invalid example: {{"type":"read_file","operation":"read_file","arguments":{{"file":"src/config.py"}}}}
+- Only after the task is complete, return {{"type":"finish","message":"done"}}.
+Canonical operation signatures: {operations}"""
     else:
-        syntax = 'Return only a short restricted Python program using repo.*, runner.*, or finish("message"). Do not use markdown fences.'
+        syntax = f"""RESTRICTED PYTHON OUTPUT CONTRACT:
+- Return only one complete raw Python program and nothing else: no explanation, Markdown, or code fence.
+- Repository capabilities are methods on `repo`; the test capability is `runner.run_process`; do not call bare read_file/list_dir names.
+- Direct filesystem APIs, imports, open, print, exceptions, and with-statements are unavailable.
+- Capability results are dictionaries. You may assign them, inspect `result["ok"]`, and inspect operation data under `result["result"]`.
+- Valid program example:
+result = repo.read_file("src/config.py")
+if result["ok"] and "ENABLED = False" in result["result"]["content"]:
+    repo.replace_text("src/config.py", "ENABLED = False", "ENABLED = True")
+- Call `finish("done")` only in a later action after the edit or test has succeeded.
+Canonical operation signatures: {operations}"""
     return [
-        {"role": "system", "content": f"You are a coding agent in a synthetic isolated repository. {syntax} Allowed operations: {operations}. Never request credentials, network, host files, Drive, or audit logs."},
+        {"role": "system", "content": f"You are a coding agent in a synthetic isolated repository.\n{syntax}\nWork efficiently and make the smallest correct change."},
         {"role": "user", "content": config["task"]["problem_statement"]},
     ]
 
@@ -291,6 +332,9 @@ def run_episode(effective_config: Mapping[str, Any], model_driver: ModelDriver |
     terminal_reason = "turn_budget_exhausted"
     model_driver = model_driver or ScriptedModel(config["interface"], config["scenario"])
     begin_episode = getattr(model_driver, "begin_episode", None)
+    configure_episode = getattr(model_driver, "configure_episode", None)
+    if callable(configure_episode):
+        configure_episode(config)
     if callable(begin_episode):
         begin_episode()
 

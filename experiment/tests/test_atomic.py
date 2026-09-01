@@ -43,6 +43,13 @@ class AtomicTests(unittest.TestCase):
         self.assertEqual("invalid", malformed.parse_status)
         self.assertEqual([], self.logger.read_events())
 
+    def test_operation_name_in_type_gets_actionable_feedback(self):
+        source = '{"type":"read_file","operation":"read_file","arguments":{"path":"sample.py"}}'
+        result = atomic.execute_action(source, self.context, "wrong-type")
+        self.assertEqual("invalid", result.parse_status)
+        self.assertIn("literal string 'tool_call'", result.error["message"])
+        self.assertEqual([], self.logger.read_events())
+
     def test_permission_denial_is_returned_and_audited(self):
         source = json.dumps({"type": "tool_call", "operation": "read_file", "arguments": {"path": "../secret"}})
         result = atomic.execute_action(source, self.context, "denied")

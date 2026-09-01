@@ -49,6 +49,14 @@ class RestrictedPythonTests(unittest.TestCase):
         self.assertEqual([], self.logger.read_events())
         self.assertFalse((self.repo / "x").exists())
 
+    def test_markdown_fence_gets_actionable_feedback(self):
+        result = restricted_python.execute_action(
+            '```python\nrepo.read_file("sample.py")\n```', self.context, "fenced"
+        )
+        self.assertEqual("invalid", result.parse_status)
+        self.assertIn("without Markdown fences", result.error["message"])
+        self.assertEqual([], self.logger.read_events())
+
     def test_loop_limit_is_enforced_before_body_execution(self):
         result = restricted_python.execute_action(
             'for index in range(1001):\n    repo.read_file("sample.py")',

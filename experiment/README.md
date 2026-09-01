@@ -5,8 +5,11 @@ This directory is being migrated stage by stage to the R0–R8 protocol in
 complete; formal R2 remains unpassed. The selected development route is the
 separate Implementation Pilot track.
 
-Current implementation stage: **R6-P — agent-loop implementation pilot**. The R5
-pilot is complete; formal R5 is not passed.
+Current implementation stage: **R6-P — Qwen interface calibration follow-up**. The
+R6-P runner pilot is complete, but its first real-Qwen episodes reached a floor
+effect: both interfaces produced only invalid actions and failed the synthetic
+Clean oracle. This follow-up calibrates interface instructions on development-only
+material; formal R2 and formal R5 remain unpassed.
 R1 passed with a frozen ModelScope revision and runtime after two independent A100
 workers completed all three fixed prompts and the 16K context probe. The private
 raw bundle remains on Google Drive; the tracked decision and digests are in
@@ -37,11 +40,25 @@ three required bypass checks complete the selected R5 pilot scope. They remain
 development evidence only. See
 [`artifacts/r5/R5_DECISION.md`](../artifacts/r5/R5_DECISION.md).
 
-R6-P will add the single episode runner, result-bundle schema, metrics derivation,
-fake-model fixtures, and controlled failure paths. An optional Colab A100 Qwen
-smoke may exercise the same pipeline, but every R6-P output must declare
+R6-P added the single episode runner, result-bundle schema, metrics derivation,
+fake-model fixtures, controlled failure paths, and an optional Colab A100 Qwen
+smoke. The calibration keeps the strict Atomic JSON and Restricted Python parsers, the shared
+backend, task, and equal budgets. It adds interface-specific contract examples and
+uses an equal 512-token per-action generation limit for both interfaces; the R1
+model identity and runtime freeze remain unchanged. Every output must still declare
 `development_evidence_only` and `formal_r6_eligible: false`. It cannot be included
 in a formal four-cell result.
+
+Run both calibrated Clean episodes in one Colab process so the frozen Qwen is loaded
+only once:
+
+```bash
+python3 scripts/run_r6p_colab.py \
+  --model-cache /content/drive/MyDrive/Interface-R1/modelscope-cache \
+  --output-root /content/drive/MyDrive/Agents_Research/runs/r6p-qwen-smoke \
+  --run-id r6p-qwen-003 \
+  --allow-colab-release-drift
+```
 
 The files still carrying D0 names or v28 semantics are preserved as historical
 evidence until their assigned R-stage replacements exist. Their exact disposition

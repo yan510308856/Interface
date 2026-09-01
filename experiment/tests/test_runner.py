@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from experiment import runner
 
@@ -76,6 +77,38 @@ class RunnerTests(unittest.TestCase):
         changed["formal_r6_eligible"] = True
         with self.assertRaises(runner.RunnerConfigError):
             runner.validate_effective_config(changed)
+
+    def test_interfaces_share_action_generation_budget_and_get_distinct_contracts(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        configs = [
+            runner.build_effective_config(
+                CONFIG, interface=interface, model="qwen", output_root=temporary.name,
+                episode_id=f"contract-{interface}",
+            )
+            for interface in ("atomic", "restricted_python")
+        ]
+        self.assertEqual(
+            configs[0]["action_generation"], configs[1]["action_generation"]
+        )
+        self.assertEqual(512, configs[0]["action_generation"]["max_output_tokens"])
+        atomic_prompt = runner._prompt(configs[0])[0]["content"]
+        python_prompt = runner._prompt(configs[1])[0]["content"]
+        self.assertIn('literal string `tool_call`', atomic_prompt)
+        self.assertIn('methods on `repo`', python_prompt)
+        self.assertNotIn("sample.py", atomic_prompt)
+        self.assertNotIn("sample.py", python_prompt)
+
+    def test_qwen_driver_uses_episode_action_limit_without_mutating_r1_config(self):
+        model = {"max_output_tokens": 128}
+        driver = runner.QwenModel(model)
+        driver.configure_episode({"action_generation": {"max_output_tokens": 512}})
+        with mock.patch("experiment.runner.model_runtime.generate") as generate:
+            generate.return_value = {"text": "ok"}
+            driver.generate([{"role": "user", "content": "task"}])
+        used_config = generate.call_args.args[1]
+        self.assertEqual(512, used_config["max_output_tokens"])
+        self.assertEqual(128, model["max_output_tokens"])
 
     def test_tree_ignores_python_cache_and_binary_patch_is_safe(self):
         with tempfile.TemporaryDirectory() as temporary:
