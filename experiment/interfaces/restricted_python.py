@@ -19,6 +19,7 @@ PROXY_OPERATIONS = {
     "repo": {"list_dir", "search_text", "read_file", "replace_text", "create_file", "delete_file", "git_diff"},
     "runner": {"run_process"},
 }
+CONTROL_CALLS = {"finish"}
 
 
 class _Validator(ast.NodeVisitor):
@@ -49,6 +50,12 @@ class _Validator(ast.NodeVisitor):
         raise RestrictedPythonError("attribute access is allowed only for capability calls")
 
     def visit_Call(self, node: ast.Call) -> None:
+        if isinstance(node.func, ast.Name) and node.func.id in CONTROL_CALLS:
+            if len(node.args) > 1 or node.keywords:
+                raise RestrictedPythonError("finish accepts at most one positional message")
+            for argument in node.args:
+                self.visit(argument)
+            return
         if not isinstance(node.func, ast.Attribute) or not isinstance(node.func.value, ast.Name):
             raise RestrictedPythonError("only repo/runner capability calls are allowed")
         proxy = node.func.value.id
@@ -89,6 +96,7 @@ class _Interpreter:
         self.schema = backend.load_schema()
         self.loop_limit = context.permission.policy["resource_limits"]["restricted_python_loop_iterations"]
         self.loop_iterations = 0
+        self.finished = False
 
     def run(self, tree: ast.Module) -> list[dict[str, Any]]:
         self._statements(tree.body)
@@ -96,6 +104,8 @@ class _Interpreter:
 
     def _statements(self, statements: list[ast.stmt]) -> None:
         for statement in statements:
+            if self.finished:
+                break
             if isinstance(statement, ast.Assign):
                 self.locals[statement.targets[0].id] = self._expression(statement.value)
             elif isinstance(statement, ast.Expr):
@@ -171,6 +181,12 @@ class _Interpreter:
         if isinstance(node, ast.Compare):
             return self._compare(node)
         if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id == "finish":
+                message = self._expression(node.args[0]) if node.args else ""
+                if not isinstance(message, str):
+                    raise RestrictedPythonError("finish message must be a string")
+                self.finished = True
+                return {"ok": True, "type": "finish", "message": message}
             return self._capability_call(node)
         raise RestrictedPythonError(f"expression is not allowed: {type(node).__name__}")
 
@@ -248,7 +264,7 @@ def execute_action(source: str, context: backend.BackendContext, action_id: str)
     backend_error = next((response["error"] for response in responses if not response["ok"]), None)
     return ActionResult(
         action_id=action_id,
-        parse_status="ok",
+        parse_status="finish" if interpreter and interpreter.finished else "ok",
         backend_op_ids=[response["request_id"] for response in responses],
         observation=format_observation(responses),
         error=backend_error,

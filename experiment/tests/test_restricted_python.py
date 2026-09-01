@@ -80,6 +80,15 @@ class RestrictedPythonTests(unittest.TestCase):
         self.assertEqual("permission_denied", result.error["code"])
         self.assertEqual("permission_denied", self.logger.read_events()[0]["status"])
 
+    def test_finish_is_explicit_control_without_backend_authority(self):
+        result = restricted_python.execute_action(
+            'finish("complete")\nrepo.delete_file("sample.py")', self.context, "finish"
+        )
+        self.assertEqual("finish", result.parse_status)
+        self.assertEqual([], result.backend_op_ids)
+        self.assertEqual([], self.logger.read_events())
+        self.assertTrue((self.repo / "sample.py").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

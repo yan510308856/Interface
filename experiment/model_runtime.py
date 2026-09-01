@@ -13,6 +13,7 @@ import contextlib
 import hashlib
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -235,6 +236,65 @@ def validate_config(config: Mapping[str, Any]) -> None:
                 raise ConfigError(f"invalid message in prompt {prompt.get('id')!r}")
             if not isinstance(message["content"], str) or not message["content"]:
                 raise ConfigError(f"empty message in prompt {prompt.get('id')!r}")
+
+
+def collect_colab_runtime_identity() -> dict[str, Any]:
+    """Collect the exact frozen runtime fields before an R6-P Qwen load."""
+    import torch
+
+    completed = subprocess.run(
+        [
+            "nvidia-smi", "--query-gpu=name,memory.total,driver_version",
+            "--format=csv,noheader,nounits",
+        ],
+        check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        timeout=30,
+    )
+    rows = [row.strip() for row in completed.stdout.splitlines() if row.strip()]
+    if completed.returncode or len(rows) != 1:
+        raise RuntimeError("exactly one NVIDIA GPU is required")
+    parts = [part.strip() for part in rows[0].split(",")]
+    if len(parts) != 3:
+        raise RuntimeError("unexpected nvidia-smi identity output")
+    release_file = Path("/etc/colab-release")
+    colab_release = os.environ.get("COLAB_RELEASE_TAG")
+    if not colab_release and release_file.is_file():
+        colab_release = release_file.read_text(encoding="utf-8").strip()
+    if not colab_release:
+        try:
+            colab_release = importlib.metadata.version("google-colab")
+        except importlib.metadata.PackageNotFoundError:
+            colab_release = None
+    return {
+        "colab_release": colab_release,
+        "python": platform.python_version(),
+        "torch": torch.__version__,
+        "cuda_runtime": torch.version.cuda,
+        "nvidia_driver": parts[2],
+        "gpu_name": parts[0],
+        "gpu_memory_mib": int(parts[1]),
+    }
+
+
+def validate_colab_runtime(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Fail closed if package or Colab identity differs from the R1 freeze."""
+    actual_packages: dict[str, str | None] = {}
+    for package, expected in config["packages"].items():
+        try:
+            actual = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            actual = None
+        actual_packages[package] = actual
+        if actual != expected:
+            raise RuntimeError(
+                f"package version mismatch for {package}: expected {expected}, found {actual}"
+            )
+    identity = collect_colab_runtime_identity()
+    if identity != config["runtime"]:
+        raise RuntimeError(
+            f"Colab runtime differs from R1 freeze: expected {config['runtime']}, found {identity}"
+        )
+    return {"packages": actual_packages, "runtime": identity}
 
 
 def resolve_modelscope_revision(config: Mapping[str, Any]) -> str:

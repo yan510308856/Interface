@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema_version": "r6p-result-bundle-v1",
+  "evidence_boundary": {
+    "evidence_class": "development_evidence_only",
+    "formal_r6_eligible": false
+  },
+  "required_files": {
+    "effective_config.json": ["schema_version", "evidence_class", "formal_r6_eligible", "interface", "environment", "model", "task", "permission", "operations", "budgets"],
+    "run_manifest.json": ["schema_version", "episode_id", "interface", "environment", "model_driver", "source_commit", "started_at", "ended_at", "terminal_reason", "effective_config_sha256"],
+    "environment.json": ["captured_at", "platform", "machine", "python"],
+    "messages.jsonl": ["role", "content"],
+    "actions.jsonl": ["action_id", "turn", "raw_output", "parse_status", "usage", "model_latency_ms", "action_latency_ms"],
+    "backend_events.jsonl": ["schema_version", "episode_id", "action_id", "operation_id", "operation", "permission", "status", "duration_ms"],
+    "final.patch": [],
+    "functional_oracle.json": ["schema_version", "status", "official_swebench_harness"],
+    "security_oracle.json": ["schema_version", "condition", "status"],
+    "metrics.json": ["schema_version", "model_turns", "backend_operation_attempts", "prompt_tokens", "output_tokens", "functional_status", "terminal_reason"],
+    "validation.json": ["schema_version", "overall", "checks"],
+    "digests.json": ["algorithm", "files"],
+    "stdout.log": [],
+    "stderr.log": []
+  },
+  "jsonl_rule": "one complete JSON object per non-empty line",
+  "overwrite_rule": "an existing episode directory is never overwritten"
+}

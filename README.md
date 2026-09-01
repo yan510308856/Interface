@@ -133,11 +133,49 @@ python3 scripts/validate_interfaces.py --output artifacts/r5
 `open`、`import os`、`subprocess` 三类最小绕过必须在产生 backend event 前被拒绝。报告的
 `PASS` 表示 R5 Implementation Pilot 的预定范围已完成；正式 R5 仍被正式 R2–R4 门禁阻塞。
 
-R6-P 将实现一个接口无关的 episode runner：合并并冻结 effective config，调用 fake/scripted model，
-经 R5 adapter 和共享 backend 执行动作，追加 observation，始终运行 oracle，并输出可校验的完整
-result bundle。它还必须覆盖 malformed output、timeout、task failure 和空 patch，并从日志自动重算
-actions、operations、tokens、time 与 oracle 字段。可选 Colab Qwen smoke 仍标记为
-`development_evidence_only`；模型修复任务成功不是 pilot gate。
+R6-P 已实现接口无关的 episode runner：合并并冻结 effective config，调用 fake/scripted model 或
+R1 frozen Qwen，经 R5 adapter 和共享 backend 执行动作，追加 observation，始终运行 oracle，并输出
+可校验的完整 result bundle。malformed output、model timeout、task failure 和空 patch 均作为受控
+episode outcome 出包；metrics 从 JSONL raw events 重算。所有 R6-P bundle 都声明
+`development_evidence_only` 与 `formal_r6_eligible: false`；synthetic fixture 成功或 Qwen 行为都不是
+正式 SWE-bench 结果。
+
+本地 fake smoke：
+
+```bash
+python3 -m unittest experiment.tests.test_runner experiment.tests.test_metrics
+python3 scripts/run_episode.py \
+  --model fake --interface atomic \
+  --output-root /tmp/r6p-local --episode-id local-atomic
+python3 scripts/run_episode.py \
+  --model fake --interface restricted_python \
+  --output-root /tmp/r6p-local --episode-id local-python
+python3 scripts/validate_result_bundle.py /tmp/r6p-local/local-atomic
+```
+
+Colab A100 smoke 在同一进程只加载一次 Qwen，然后依次运行两个 Clean 接口。先在 Colab notebook
+挂载 Drive；再 clone 本次 handoff 给出的精确 commit（不要运行浮动的最新分支），安装 R1 固定的
+用户空间依赖，最后运行：
+
+```python
+from google.colab import drive
+drive.mount("/content/drive")
+```
+
+```bash
+git clone https://github.com/yan510308856/Agents_Research.git /content/Agents_Research
+cd /content/Agents_Research
+git checkout <R6P_COMMIT_SHA>
+python3 -m pip install -r requirements.txt
+python3 scripts/run_r6p_colab.py \
+  --model-cache /content/drive/MyDrive/Interface-R1/modelscope-cache \
+  --output-root /content/drive/MyDrive/Agents_Research/runs/r6p-qwen-smoke \
+  --run-id r6p-qwen-001
+```
+
+入口会拒绝 dirty clone、非唯一 GPU、包版本或 Colab/Python/Torch/CUDA/driver/GPU identity 与 R1
+freeze 不一致、重复 episode directory，以及 bundle digest/metrics 校验失败。Drive 仅由 runner 外层
+用于模型 cache 与 immutable bundle 输出，不会挂进 synthetic agent workspace，也不会出现在 prompt。
 
 正式 R2 必须在具有至少 120 GiB Docker 数据盘的原生 x86_64 Linux Docker
 host 上运行。安装固定 harness 后先执行 preflight：

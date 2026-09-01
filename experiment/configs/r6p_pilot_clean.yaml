@@ -1,0 +1,25 @@
+{
+  "schema_version": "r6p-pilot-config-v1",
+  "evidence_class": "development_evidence_only",
+  "formal_r6_eligible": false,
+  "environment": "clean",
+  "refs": {
+    "model": "experiment/configs/model.yaml",
+    "permission": "experiment/configs/permission.yaml",
+    "operations": "experiment/schemas/operations.yaml"
+  },
+  "workspace_template": "experiment/fixtures/r6p_clean",
+  "task": {
+    "task_id": "r6p-synthetic-value-fix",
+    "problem_statement": "In sample.py, change VALUE from 1 to 2. Inspect files as needed, make the smallest edit, run the approved unittest command if useful, then finish.",
+    "oracle_argv": ["python3", "-m", "unittest", "tests.test_sample"],
+    "oracle_timeout_seconds": 30,
+    "official_swebench_harness": false
+  },
+  "budgets": {
+    "model_turns": 6,
+    "backend_operation_attempts": 12,
+    "token_budget": 10000,
+    "episode_seconds": 300
+  }
+}

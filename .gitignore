@@ -63,6 +63,10 @@ artifacts/r5/*
 !artifacts/r5/equivalence_report.json
 !artifacts/r5/atomic_trajectory.jsonl
 !artifacts/r5/python_trajectory.jsonl
+!artifacts/r6p/
+artifacts/r6p/*
+!artifacts/r6p/R6P_DECISION.md
+!artifacts/r6p/runner_summary.json
 docs/archive/*.pdf
 *.pptx
 *.pptx.inspect.ndjson
