@@ -210,7 +210,7 @@ def _execute_operation(operation: str, args: Mapping[str, Any], context: Backend
         return {"path": relative, "deleted_sha256": digest}
     if operation == "run_process":
         try:
-            completed = subprocess.run(args["argv"], cwd=context.repo_root, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=args["timeout_seconds"], shell=False, check=False, env={"PATH": os.environ.get("PATH", ""), "PYTHONHASHSEED": "0"})
+            completed = subprocess.run(args["argv"], cwd=context.repo_root, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=args["timeout_seconds"], shell=False, check=False, env={"PATH": os.environ.get("PATH", ""), "PYTHONHASHSEED": "0", "PYTHONDONTWRITEBYTECODE": "1"})
         except subprocess.TimeoutExpired as exc:
             raise BackendError("timeout", f"process exceeded {args['timeout_seconds']} seconds") from exc
         stdout, stdout_truncated = _truncate(completed.stdout, limits["process_stdout_bytes"])

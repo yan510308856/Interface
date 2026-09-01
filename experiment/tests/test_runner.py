@@ -77,6 +77,20 @@ class RunnerTests(unittest.TestCase):
         with self.assertRaises(runner.RunnerConfigError):
             runner.validate_effective_config(changed)
 
+    def test_tree_ignores_python_cache_and_binary_patch_is_safe(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            cache = workspace / "__pycache__"
+            cache.mkdir()
+            (cache / "sample.cpython-313.pyc").write_bytes(b"\xf3\x00cache")
+            (workspace / "artifact.bin").write_bytes(b"\xf3\x00binary")
+
+            tree = runner._tree(workspace)
+            patch = runner._patch({}, tree)
+
+            self.assertNotIn("__pycache__", tree)
+            self.assertIn("Binary files a/artifact.bin and b/artifact.bin differ", patch)
+
 
 if __name__ == "__main__":
     unittest.main()

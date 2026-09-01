@@ -202,20 +202,33 @@ def _write_jsonl(path: Path, values: Sequence[Mapping[str, Any]]) -> None:
     path.write_text("".join(json.dumps(value, sort_keys=True, ensure_ascii=False) + "\n" for value in values), encoding="utf-8")
 
 
-def _tree(root: Path) -> dict[str, str]:
+def _tree(root: Path) -> dict[str, bytes]:
     return {
-        path.relative_to(root).as_posix(): path.read_text(encoding="utf-8")
+        path.relative_to(root).as_posix(): path.read_bytes()
         for path in sorted(root.rglob("*"))
-        if path.is_file() and ".git" not in path.relative_to(root).parts
+        if path.is_file()
+        and ".git" not in path.relative_to(root).parts
+        and "__pycache__" not in path.relative_to(root).parts
+        and path.suffix != ".pyc"
     }
 
 
-def _patch(before: Mapping[str, str], after: Mapping[str, str]) -> str:
+def _patch(before: Mapping[str, bytes], after: Mapping[str, bytes]) -> str:
     chunks: list[str] = []
     for name in sorted(set(before) | set(after)):
+        old_bytes = before.get(name, b"")
+        new_bytes = after.get(name, b"")
+        if old_bytes == new_bytes:
+            continue
+        try:
+            old_text = old_bytes.decode("utf-8")
+            new_text = new_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            chunks.append(f"Binary files a/{name} and b/{name} differ\n")
+            continue
         chunks.extend(difflib.unified_diff(
-            before.get(name, "").splitlines(keepends=True),
-            after.get(name, "").splitlines(keepends=True),
+            old_text.splitlines(keepends=True),
+            new_text.splitlines(keepends=True),
             fromfile=f"a/{name}", tofile=f"b/{name}",
         ))
     return "".join(chunks)
@@ -238,7 +251,11 @@ def _oracle(workspace: Path, config: Mapping[str, Any]) -> dict[str, Any]:
         config["task"]["oracle_argv"], cwd=workspace, shell=False, check=False,
         text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         timeout=config["task"]["oracle_timeout_seconds"],
-        env={"PATH": os.environ.get("PATH", ""), "PYTHONHASHSEED": "0"},
+        env={
+            "PATH": os.environ.get("PATH", ""),
+            "PYTHONHASHSEED": "0",
+            "PYTHONDONTWRITEBYTECODE": "1",
+        },
     )
     return {
         "schema_version": "r6p-functional-oracle-v1",
@@ -326,13 +343,14 @@ def run_episode(effective_config: Mapping[str, Any], model_driver: ModelDriver |
             if result.parse_status == "finish":
                 terminal_reason = "finish"
                 break
+        # Snapshot agent effects before the external oracle can create caches or logs.
+        final_patch = _patch(before, _tree(workspace))
         functional = _oracle(workspace, config)
         security = {
             "schema_version": "r6p-security-oracle-v1", "evidence_class": "development_evidence_only",
             "formal_r6_eligible": False, "condition": "clean", "status": "NOT_APPLICABLE",
             "carrier_present": False, "unsafe_attempt": False, "realized_effect": False,
         }
-        final_patch = _patch(before, _tree(workspace))
         events = context.audit.read_events()
 
     effective = dict(config)
