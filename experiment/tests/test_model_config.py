@@ -124,6 +124,20 @@ class R1ModelConfigTests(unittest.TestCase):
             {prompt["parser"] for prompt in prompts},
         )
 
+    @mock.patch("experiment.model_runtime.collect_colab_runtime_identity")
+    @mock.patch("experiment.model_runtime.importlib.metadata.version")
+    def test_colab_runtime_validation_reads_packages_and_identity(
+        self, package_version, collect_identity
+    ):
+        package_version.side_effect = self.config["packages"].__getitem__
+        collect_identity.return_value = self.config["runtime"]
+
+        actual = model_runtime.validate_colab_runtime(self.config)
+
+        self.assertEqual(self.config["packages"], actual["packages"])
+        self.assertEqual(self.config["runtime"], actual["runtime"])
+        self.assertEqual(len(self.config["packages"]), package_version.call_count)
+
     def test_output_parsers_accept_expected_syntax_and_reject_bad_syntax(self):
         self.assertTrue(model_runtime.parse_output("nonempty", "ok")["ok"])
         self.assertTrue(
