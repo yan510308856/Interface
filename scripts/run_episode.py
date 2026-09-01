@@ -24,6 +24,11 @@ def main() -> int:
     parser.add_argument("--episode-id")
     parser.add_argument("--scenario", choices=("happy", "malformed", "timeout", "task_failure", "empty_patch"), default="happy")
     parser.add_argument("--model-cache", help="ModelScope cache path outside the agent workspace")
+    parser.add_argument(
+        "--allow-colab-release-drift",
+        action="store_true",
+        help="Pilot-only: allow only the Colab release label to differ from R1",
+    )
     args = parser.parse_args()
     config = runner.build_effective_config(
         args.config, interface=args.interface, model=args.model, output_root=args.output_root,
@@ -35,9 +40,12 @@ def main() -> int:
             parser.error("real Qwen mode supports only the happy smoke scenario")
         if args.model_cache:
             os.environ[config["model"]["cache_policy"]["environment_variable"]] = str(Path(args.model_cache).expanduser().resolve())
-        model_runtime.validate_colab_runtime(config["model"])
+        identity = model_runtime.validate_colab_runtime(
+            config["model"],
+            allow_colab_release_drift=args.allow_colab_release_drift,
+        )
         model_runtime.load_model(config["model"])
-        driver = runner.QwenModel(config["model"])
+        driver = runner.QwenModel(config["model"], runtime_validation=identity)
     try:
         output = runner.run_episode(config, driver)
         validation = runner.validate_bundle(output)

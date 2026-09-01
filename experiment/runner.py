@@ -174,6 +174,7 @@ class ScriptedModel:
 @dataclass
 class QwenModel:
     config: Mapping[str, Any]
+    runtime_validation: Mapping[str, Any] | None = None
     generation_start: int = 0
 
     def begin_episode(self) -> None:
@@ -188,6 +189,7 @@ class QwenModel:
         return {
             "frozen_runtime": dict(self.config["runtime"]),
             "frozen_packages": dict(self.config["packages"]),
+            "runtime_validation": dict(self.runtime_validation or {}),
             "model_metrics": collected,
         }
 

@@ -170,12 +170,16 @@ python3 -m pip install -r requirements.txt
 python3 scripts/run_r6p_colab.py \
   --model-cache /content/drive/MyDrive/Interface-R1/modelscope-cache \
   --output-root /content/drive/MyDrive/Agents_Research/runs/r6p-qwen-smoke \
-  --run-id r6p-qwen-001
+  --run-id r6p-qwen-001 \
+  --allow-colab-release-drift
 ```
 
 入口会拒绝 dirty clone、非唯一 GPU、包版本或 Colab/Python/Torch/CUDA/driver/GPU identity 与 R1
 freeze 不一致、重复 episode directory，以及 bundle digest/metrics 校验失败。Drive 仅由 runner 外层
 用于模型 cache 与 immutable bundle 输出，不会挂进 synthetic agent workspace，也不会出现在 prompt。
+`--allow-colab-release-drift` 仅供 R6-P 开发性 smoke：只允许 Colab release 标签变化并把差异写入
+bundle；Python、包版本、Torch、CUDA、driver、GPU 型号或显存任一变化仍会 fail closed。正式运行
+不得使用该参数。
 
 正式 R2 必须在具有至少 120 GiB Docker 数据盘的原生 x86_64 Linux Docker
 host 上运行。安装固定 harness 后先执行 preflight：

@@ -277,8 +277,10 @@ def collect_colab_runtime_identity() -> dict[str, Any]:
     }
 
 
-def validate_colab_runtime(config: Mapping[str, Any]) -> dict[str, Any]:
-    """Fail closed if package or Colab identity differs from the R1 freeze."""
+def validate_colab_runtime(
+    config: Mapping[str, Any], *, allow_colab_release_drift: bool = False
+) -> dict[str, Any]:
+    """Validate R1 identity, optionally allowing only the Colab release label."""
     actual_packages: dict[str, str | None] = {}
     for package, expected in config["packages"].items():
         try:
@@ -291,11 +293,22 @@ def validate_colab_runtime(config: Mapping[str, Any]) -> dict[str, Any]:
                 f"package version mismatch for {package}: expected {expected}, found {actual}"
             )
     identity = collect_colab_runtime_identity()
-    if identity != config["runtime"]:
+    drift = {
+        name: {"expected": config["runtime"].get(name), "actual": identity.get(name)}
+        for name in sorted(set(config["runtime"]) | set(identity))
+        if config["runtime"].get(name) != identity.get(name)
+    }
+    release_only = set(drift) == {"colab_release"}
+    if drift and not (allow_colab_release_drift and release_only):
         raise RuntimeError(
             f"Colab runtime differs from R1 freeze: expected {config['runtime']}, found {identity}"
         )
-    return {"packages": actual_packages, "runtime": identity}
+    return {
+        "packages": actual_packages,
+        "runtime": identity,
+        "compatibility": "colab_release_drift_allowed" if drift else "exact_r1_match",
+        "drift": drift,
+    }
 
 
 def resolve_modelscope_revision(config: Mapping[str, Any]) -> str:

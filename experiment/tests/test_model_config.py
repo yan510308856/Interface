@@ -136,7 +136,42 @@ class R1ModelConfigTests(unittest.TestCase):
 
         self.assertEqual(self.config["packages"], actual["packages"])
         self.assertEqual(self.config["runtime"], actual["runtime"])
+        self.assertEqual("exact_r1_match", actual["compatibility"])
+        self.assertEqual({}, actual["drift"])
         self.assertEqual(len(self.config["packages"]), package_version.call_count)
+
+    @mock.patch("experiment.model_runtime.collect_colab_runtime_identity")
+    @mock.patch("experiment.model_runtime.importlib.metadata.version")
+    def test_colab_runtime_can_explicitly_allow_release_label_only(
+        self, package_version, collect_identity
+    ):
+        package_version.side_effect = self.config["packages"].__getitem__
+        changed = dict(self.config["runtime"])
+        changed["colab_release"] = "next-colab-release"
+        collect_identity.return_value = changed
+
+        actual = model_runtime.validate_colab_runtime(
+            self.config, allow_colab_release_drift=True
+        )
+
+        self.assertEqual("colab_release_drift_allowed", actual["compatibility"])
+        self.assertEqual({"colab_release"}, set(actual["drift"]))
+
+    @mock.patch("experiment.model_runtime.collect_colab_runtime_identity")
+    @mock.patch("experiment.model_runtime.importlib.metadata.version")
+    def test_colab_runtime_still_rejects_compute_identity_drift(
+        self, package_version, collect_identity
+    ):
+        package_version.side_effect = self.config["packages"].__getitem__
+        changed = dict(self.config["runtime"])
+        changed["colab_release"] = "next-colab-release"
+        changed["cuda_runtime"] = "99.0"
+        collect_identity.return_value = changed
+
+        with self.assertRaises(RuntimeError):
+            model_runtime.validate_colab_runtime(
+                self.config, allow_colab_release_drift=True
+            )
 
     def test_output_parsers_accept_expected_syntax_and_reject_bad_syntax(self):
         self.assertTrue(model_runtime.parse_output("nonempty", "ok")["ok"])
