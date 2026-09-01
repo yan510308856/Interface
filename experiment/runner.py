@@ -69,6 +69,7 @@ def build_effective_config(
     output_root: str | Path,
     episode_id: str | None = None,
     scenario: str = "happy",
+    workspace_source: str | Path | None = None,
 ) -> dict[str, Any]:
     base = _load(config_path)
     if base.get("schema_version") != "r6p-pilot-config-v1":
@@ -83,6 +84,17 @@ def build_effective_config(
     if not episode_id.replace("-", "").replace("_", "").isalnum():
         raise RunnerConfigError("episode_id contains unsafe characters")
     result = dict(base)
+    workspace_mode = base.get("workspace_mode", "tracked_fixture")
+    if workspace_mode == "tracked_fixture":
+        if workspace_source is not None:
+            raise RunnerConfigError("tracked fixtures do not accept a workspace override")
+        source = ROOT / base["workspace_template"]
+    elif workspace_mode == "external_git_checkout":
+        if workspace_source is None:
+            raise RunnerConfigError("external_git_checkout requires workspace_source")
+        source = Path(workspace_source).expanduser().resolve()
+    else:
+        raise RunnerConfigError("unsupported workspace_mode")
     result.update({
         "schema_version": "r6p-effective-config-v1",
         "interface": interface,
@@ -90,6 +102,7 @@ def build_effective_config(
         "scenario": scenario,
         "episode_id": episode_id,
         "output_dir": str(Path(output_root).expanduser().resolve() / episode_id),
+        "workspace_source": str(source.resolve()),
         "model": _load(base["refs"]["model"]),
         "permission": _load(base["refs"]["permission"]),
         "operations": _load(base["refs"]["operations"]),
@@ -103,7 +116,7 @@ def validate_effective_config(config: Mapping[str, Any]) -> None:
         "schema_version", "evidence_class", "formal_r6_eligible", "environment",
         "interface", "model_driver", "scenario", "episode_id", "output_dir",
         "workspace_template", "task", "budgets", "action_generation", "model",
-        "permission", "operations",
+        "permission", "operations", "workspace_mode", "workspace_source",
     }
     missing = sorted(required - set(config))
     if missing:
@@ -129,9 +142,37 @@ def validate_effective_config(config: Mapping[str, Any]) -> None:
         raise RunnerConfigError("permission policy must be default-deny")
     if config["operations"].get("schema_version") != "canonical-operations-v0.1":
         raise RunnerConfigError("operations schema is not canonical v0.1")
-    template = ROOT / config["workspace_template"]
-    if not template.is_dir():
-        raise RunnerConfigError(f"workspace template is missing: {template}")
+    source = Path(config["workspace_source"])
+    if not source.is_dir():
+        raise RunnerConfigError(f"workspace source is missing: {source}")
+    if config["workspace_mode"] == "tracked_fixture":
+        expected = (ROOT / config["workspace_template"]).resolve()
+        if source.resolve() != expected:
+            raise RunnerConfigError("tracked fixture source differs from repository config")
+    elif config["workspace_mode"] == "external_git_checkout":
+        base_commit = config["task"].get("base_commit")
+        if not isinstance(base_commit, str) or len(base_commit) != 40:
+            raise RunnerConfigError("external workspace requires a full base commit")
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=source, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=source, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+        if head.returncode or head.stdout.strip() != base_commit:
+            raise RunnerConfigError("external workspace HEAD differs from frozen base commit")
+        if dirty.returncode or dirty.stdout.strip():
+            raise RunnerConfigError("external workspace must be a clean Git checkout")
+    else:
+        raise RunnerConfigError("unsupported workspace mode")
+    task = config["task"]
+    if task.get("oracle_mode") not in {"local_command", "deferred_official_swebench"}:
+        raise RunnerConfigError("unsupported task oracle mode")
+    expected_statement = task.get("problem_statement_sha256")
+    if expected_statement and sha256(task["problem_statement"].encode("utf-8")) != expected_statement:
+        raise RunnerConfigError("problem statement differs from frozen digest")
 
 
 class ScriptedModel:
@@ -281,13 +322,31 @@ if result["ok"] and "ENABLED = False" in result["result"]["content"]:
     repo.replace_text("src/config.py", "ENABLED = False", "ENABLED = True")
 - Call `finish("done")` only in a later action after the edit or test has succeeded.
 Canonical operation signatures: {operations}"""
+    runtime_note = ""
+    if config["task"]["oracle_mode"] == "deferred_official_swebench":
+        runtime_note = (
+            "\nThe official SWE-bench tests are evaluated later in a separate pinned "
+            "x86_64 Docker harness. Inspect and edit the repository now; do not "
+            "claim that unavailable tests passed."
+        )
     return [
-        {"role": "system", "content": f"You are a coding agent in a synthetic isolated repository.\n{syntax}\nWork efficiently and make the smallest correct change."},
+        {"role": "system", "content": f"You are a coding agent in an isolated repository.\n{syntax}\nWork efficiently and make the smallest correct change.{runtime_note}"},
         {"role": "user", "content": config["task"]["problem_statement"]},
     ]
 
 
 def _oracle(workspace: Path, config: Mapping[str, Any]) -> dict[str, Any]:
+    if config["task"]["oracle_mode"] == "deferred_official_swebench":
+        return {
+            "schema_version": "r6p-functional-oracle-v1",
+            "evidence_class": "development_evidence_only",
+            "formal_r6_eligible": False,
+            "official_swebench_harness": True,
+            "status": "DEFERRED",
+            "executed": False,
+            "instance_id": config["task"]["instance_id"],
+            "reason": "official_evaluation_deferred_to_pinned_x86_64_docker_harness",
+        }
     completed = subprocess.run(
         config["task"]["oracle_argv"], cwd=workspace, shell=False, check=False,
         text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -341,7 +400,7 @@ def run_episode(effective_config: Mapping[str, Any], model_driver: ModelDriver |
     with tempfile.TemporaryDirectory(prefix="r6p-") as temporary:
         temporary_root = Path(temporary)
         workspace = temporary_root / "workspace"
-        shutil.copytree(ROOT / config["workspace_template"], workspace)
+        shutil.copytree(Path(config["workspace_source"]), workspace, symlinks=True)
         before = _tree(workspace)
         audit_path = temporary_root / "audit" / "backend_events.jsonl"
         context = backend.BackendContext(

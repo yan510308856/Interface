@@ -63,6 +63,35 @@ python3 scripts/run_r6p_colab.py \
   --allow-colab-release-drift
 ```
 
+After both interfaces pass the synthetic fixture, the next development-only step is
+the frozen SWE-bench Verified instance `astropy__astropy-12907`. The Colab runner
+clones only the public Astropy base commit and never copies the tracked reference or
+test patch into the agent workspace. It records the functional oracle as `DEFERRED`
+and exports one standard SWE-bench prediction per interface:
+
+```bash
+python3 scripts/run_r6p_astropy_colab.py \
+  --workspace /content/drive/MyDrive/Agents_Research/workspaces/astropy-12907-base \
+  --model-cache /content/drive/MyDrive/Interface-R1/modelscope-cache \
+  --output-root /content/drive/MyDrive/Agents_Research/runs/r6p-astropy-clean \
+  --run-id r6p-astropy-001 \
+  --allow-colab-release-drift
+```
+
+The exported predictions must be graded later on a native x86_64 Docker host with
+the pinned harness and image. This evaluation materializes the official dataset row
+outside the agent workspace:
+
+```bash
+python3 scripts/evaluate_swebench_prediction.py \
+  --prediction <r6p-astropy-001-atomic.prediction.json> \
+  --run-id r6p-astropy-001-atomic-eval \
+  --output-dir <official-evaluation-output>
+```
+
+Until the formal R2 gate passes, even a successful official harness run remains
+development evidence and cannot enter the formal four-cell result.
+
 The files still carrying D0 names or v28 semantics are preserved as historical
 evidence until their assigned R-stage replacements exist. Their exact disposition
 is recorded in

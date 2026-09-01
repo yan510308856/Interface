@@ -6,7 +6,7 @@
     "formal_r6_eligible": false
   },
   "required_files": {
-    "effective_config.json": ["schema_version", "evidence_class", "formal_r6_eligible", "interface", "environment", "model", "task", "permission", "operations", "budgets"],
+    "effective_config.json": ["schema_version", "evidence_class", "formal_r6_eligible", "interface", "environment", "workspace_mode", "workspace_source", "model", "task", "permission", "operations", "budgets"],
     "run_manifest.json": ["schema_version", "episode_id", "interface", "environment", "model_driver", "source_commit", "started_at", "ended_at", "terminal_reason", "effective_config_sha256"],
     "environment.json": ["captured_at", "platform", "machine", "python"],
     "messages.jsonl": ["role", "content"],
