@@ -101,24 +101,28 @@ class RunnerTests(unittest.TestCase):
         )
         for config in configs:
             self.assertEqual(
-                "r6p-interface-scaffold-v2",
+                "r6p-interface-scaffold-v3",
                 config["interface_scaffold"]["schema_version"],
             )
             self.assertEqual(
-                "qwen-action-only-demo-v1",
+                "qwen-action-only-demo-v2",
                 config["interface_scaffold"]["format_demonstration"],
             )
             self.assertEqual(
-                "qwen-invalid-action-feedback-v1",
+                "qwen-invalid-action-feedback-v2",
                 config["interface_scaffold"]["invalid_feedback"],
             )
+            self.assertEqual(3, config["interface_scaffold"]["retained_action_turns"])
         self.assertEqual(512, configs[0]["action_generation"]["max_output_tokens"])
         atomic_messages = runner._prompt(configs[0])
         python_messages = runner._prompt(configs[1])
         atomic_prompt = atomic_messages[0]["content"]
         python_prompt = python_messages[0]["content"]
         self.assertIn('literal string `tool_call`', atomic_prompt)
+        self.assertIn('encode newlines as `\\n`', atomic_prompt)
         self.assertIn('methods on `repo`', python_prompt)
+        self.assertIn("Comprehensions", python_prompt)
+        self.assertIn("one short direct capability assignment", python_prompt)
         self.assertNotIn("sample.py", atomic_prompt)
         self.assertNotIn("sample.py", python_prompt)
         self.assertEqual("system", atomic_messages[0]["role"])
@@ -136,7 +140,11 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(all("```" not in source for source in atomic_examples + python_examples))
 
     def test_invalid_feedback_is_explicit_without_rewriting_the_observation(self):
-        invalid = SimpleNamespace(parse_status="invalid", observation='{"responses":[]}')
+        invalid = SimpleNamespace(
+            parse_status="invalid",
+            observation='{"responses":[]}',
+            error={"message": "syntax is not allowed: ListComp"},
+        )
         valid = SimpleNamespace(parse_status="ok", observation='{"responses":[1]}')
 
         atomic = runner._model_feedback("atomic", invalid)
@@ -146,8 +154,42 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("PROTOCOL RETRY", atomic)
         self.assertIn("one JSON tool_call", atomic)
         self.assertTrue(python.startswith(invalid.observation))
-        self.assertIn("raw Restricted Python", python)
+        self.assertIn("syntax is not allowed: ListComp", python)
+        self.assertIn("one short direct repo/runner capability call", python)
         self.assertEqual(valid.observation, runner._model_feedback("atomic", valid))
+
+    def test_model_history_is_bounded_without_losing_the_complete_audit_log(self):
+        active = [{"role": "system", "content": "contract"}]
+        complete = list(active)
+        for turn in range(5):
+            runner._append_model_history(
+                active, complete, 1, f"action-{turn}", f"observation-{turn}"
+            )
+
+        self.assertEqual(1 + 2 * runner.RETAINED_ACTION_TURNS, len(active))
+        self.assertEqual("action-2", active[1]["content"])
+        self.assertEqual(11, len(complete))
+        self.assertEqual("action-0", complete[1]["content"])
+
+    def test_model_error_records_the_exception_detail(self):
+        class BrokenDriver:
+            def generate(self, messages):
+                raise RuntimeError("fixed prompt plus output budget exceeds planned context")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            config = runner.build_effective_config(
+                CONFIG,
+                interface="atomic",
+                model="fake",
+                output_root=temporary,
+                episode_id="model-error-detail",
+            )
+            bundle = runner.run_episode(config, BrokenDriver())
+            action = json.loads((bundle / "actions.jsonl").read_text().splitlines()[0])
+
+        self.assertEqual("model_error", action["parse_status"])
+        self.assertEqual("RuntimeError", action["error"]["exception_type"])
+        self.assertIn("exceeds planned context", action["error"]["message"])
 
     def test_three_consecutive_invalid_actions_stop_each_interface_early(self):
         class AlwaysInvalidDriver:

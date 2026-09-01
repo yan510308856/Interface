@@ -818,6 +818,12 @@ scaffold。当前校准固定为：每个接口一个使用 fictional path/data 
 自动抽取、修复或执行 invalid output。所有校准运行继续标记为 development evidence，不能回填正式
 R6/R7。
 
+v3 pilot scaffold 进一步显式列出 Restricted Python 的冻结 AST 子集，并要求调查阶段先返回短的
+direct capability program；Atomic JSON 字符串必须转义物理换行。为避免完整 observation history
+超过冻结的 16K context，两个接口统一只向模型保留最近 3 个 action/observation pair，同时
+`messages.jsonl` 继续保存完整轨迹。该窗口是 shared scaffold policy，不改变 adapter、backend、
+permission、task、oracle 或 raw-output 判定。
+
 ## 11. R6 — 真实 Qwen Clean smoke
 
 本节是正式 R6，目前未解锁。R6-P 的任何运行均不能计入本节 gate。

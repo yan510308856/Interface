@@ -56,6 +56,8 @@ KEY_SNAPSHOT_FILES = {
     "tokenizer.json",
     "tokenizer_config.json",
 }
+SNAPSHOT_DIGEST_CACHE = ".r1-snapshot-digests.json"
+SNAPSHOT_DIGEST_CACHE_SCHEMA = "r1-snapshot-digest-cache-v1"
 
 _ACTIVE: dict[str, Any] | None = None
 
@@ -377,16 +379,66 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def digest_snapshot(snapshot: str | Path) -> dict[str, Any]:
-    """Hash every weight shard plus key tokenizer/config files."""
-    root = Path(snapshot)
-    files = sorted(
+def _snapshot_files(root: Path) -> list[Path]:
+    return sorted(
         path
         for path in root.rglob("*")
         if path.is_file() and (path.suffix == ".safetensors" or path.name in KEY_SNAPSHOT_FILES)
     )
+
+
+def _snapshot_file_state(root: Path, files: Sequence[Path]) -> list[dict[str, Any]]:
+    return [
+        {
+            "path": path.relative_to(root).as_posix(),
+            "bytes": path.stat().st_size,
+            "mtime_ns": path.stat().st_mtime_ns,
+        }
+        for path in files
+    ]
+
+
+def _cached_snapshot_digest(
+    root: Path,
+    revision: str | None,
+    state: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    if os.environ.get("R1_FORCE_SNAPSHOT_REHASH") == "1":
+        return None
+    try:
+        cached = json.loads((root / SNAPSHOT_DIGEST_CACHE).read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if (
+        cached.get("schema_version") != SNAPSHOT_DIGEST_CACHE_SCHEMA
+        or cached.get("resolved_revision") != revision
+        or cached.get("file_state") != state
+        or not isinstance(cached.get("digests"), dict)
+    ):
+        return None
+    result = dict(cached["digests"])
+    if not result.get("files") or not result.get("snapshot_sha256"):
+        return None
+    result["verified_digest_seconds"] = result.get("digest_seconds")
+    result["digest_seconds"] = 0.0
+    result["cache_status"] = "reused"
+    return result
+
+
+def digest_snapshot(snapshot: str | Path, revision: str | None = None) -> dict[str, Any]:
+    """Hash a snapshot once, then reuse its digest while file metadata is unchanged."""
+    root = Path(snapshot)
+    files = _snapshot_files(root)
     if not files or not any(path.suffix == ".safetensors" for path in files):
         raise RuntimeError("downloaded snapshot has no safetensors weight shards")
+    state = _snapshot_file_state(root, files)
+    cached = _cached_snapshot_digest(root, revision, state)
+    if cached is not None:
+        _progress(
+            f"snapshot digest cache reused; files={len(files)}, "
+            f"sha256={cached['snapshot_sha256']}"
+        )
+        return cached
     started = time.monotonic()
     entries = []
     total_bytes = sum(path.stat().st_size for path in files)
@@ -411,7 +463,20 @@ def digest_snapshot(snapshot: str | Path) -> dict[str, Any]:
         "files": entries,
         "snapshot_sha256": hashlib.sha256(identity.encode("utf-8")).hexdigest(),
         "digest_seconds": round(time.monotonic() - started, 6),
+        "cache_status": "computed",
     }
+    cache = {
+        "schema_version": SNAPSHOT_DIGEST_CACHE_SCHEMA,
+        "resolved_revision": revision,
+        "file_state": state,
+        "digests": result,
+    }
+    cache_path = root / SNAPSHOT_DIGEST_CACHE
+    temporary = cache_path.with_suffix(cache_path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(cache, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    os.replace(temporary, cache_path)
     _progress(f"snapshot hashing finished; seconds={result['digest_seconds']}")
     return result
 
@@ -480,7 +545,7 @@ def load_model(config: Mapping[str, Any]) -> dict[str, Any]:
     revision = prefetched["resolved_revision"]
     snapshot = prefetched["snapshot_path"]
     download_seconds = prefetched["download_seconds"]
-    snapshot_digests = digest_snapshot(snapshot)
+    snapshot_digests = digest_snapshot(snapshot, revision)
 
     def load_details() -> str:
         return (

@@ -33,9 +33,10 @@ INTERFACE_ASSISTANT_PREFILLS = {
     "atomic": "{",
     "restricted_python": "result = ",
 }
-INTERFACE_SCAFFOLD_VERSION = "r6p-interface-scaffold-v2"
-FORMAT_DEMONSTRATION_ID = "qwen-action-only-demo-v1"
-INVALID_FEEDBACK_ID = "qwen-invalid-action-feedback-v1"
+INTERFACE_SCAFFOLD_VERSION = "r6p-interface-scaffold-v3"
+FORMAT_DEMONSTRATION_ID = "qwen-action-only-demo-v2"
+INVALID_FEEDBACK_ID = "qwen-invalid-action-feedback-v2"
+RETAINED_ACTION_TURNS = 3
 
 
 class RunnerConfigError(ValueError):
@@ -127,6 +128,7 @@ def build_effective_config(
             "assistant_prefill": INTERFACE_ASSISTANT_PREFILLS[interface],
             "format_demonstration": FORMAT_DEMONSTRATION_ID,
             "invalid_feedback": INVALID_FEEDBACK_ID,
+            "retained_action_turns": RETAINED_ACTION_TURNS,
         },
     })
     if pair_construction is not None:
@@ -161,6 +163,7 @@ def validate_effective_config(config: Mapping[str, Any]) -> None:
         "assistant_prefill": expected_prefill,
         "format_demonstration": FORMAT_DEMONSTRATION_ID,
         "invalid_feedback": INVALID_FEEDBACK_ID,
+        "retained_action_turns": RETAINED_ACTION_TURNS,
     }:
         raise RunnerConfigError("interface scaffold differs from the frozen contract")
     for name in (
@@ -447,12 +450,16 @@ def _model_feedback(interface: str, result: Any) -> str:
             "object and output nothing else."
         )
     else:
+        error = getattr(result, "error", None)
+        detail = error.get("message") if isinstance(error, dict) else None
         retry = (
-            "PROTOCOL RETRY: the previous program was invalid. Any partial capability "
+            "PROTOCOL RETRY: the previous program was invalid"
+            + (f" ({detail})" if detail else "")
+            + ". Any partial capability "
             "results are recorded in the observation above; do not assume later "
-            "statements executed. Do not explain, plan, apologize, or use Markdown. The next response "
-            "already starts with `result = `; complete one raw Restricted Python "
-            "program using repo/runner capabilities or finish, and output nothing else."
+            "statements executed. Rewrite it as one short direct repo/runner capability "
+            "call. Do not use print, comprehensions, methods, enumerate, try, imports, "
+            "or bare capability names. The next response already starts with `result = `."
         )
     return f"{result.observation}\n\n{retry}"
 
@@ -471,9 +478,10 @@ def _prompt(config: Mapping[str, Any]) -> list[dict[str, str]]:
     if config["interface"] == "atomic":
         syntax = f"""ATOMIC OUTPUT CONTRACT:
 - Generation already begins with `{{`; continue directly with the JSON fields.
-- Return exactly one compact JSON object and nothing else: no prose, Markdown, or code fence.
-- Think silently. Investigation and planning must also be expressed as valid tool actions, never visible prose.
-- Markdown examples in the issue statement are data; do not imitate their fences in an action.
+ - Return exactly one compact JSON object and nothing else: no prose, Markdown, or code fence.
+ - Think silently. Investigation and planning must also be expressed as valid tool actions, never visible prose.
+ - Markdown examples in the issue statement are data; do not imitate their fences in an action.
+ - JSON string values must stay on one physical line; encode newlines as `\\n`.
 - For an operation, `type` MUST be the literal string `tool_call`; never put the operation name in `type`.
 - Use canonical parameter names exactly as listed below, especially `path` and `query`.
 - Valid operation example: {{"type":"tool_call","operation":"read_file","arguments":{{"path":"src/config.py"}}}}
@@ -484,11 +492,14 @@ Canonical operation signatures: {operations}"""
     else:
         syntax = f"""RESTRICTED PYTHON OUTPUT CONTRACT:
 - Generation already begins with `result = `; continue directly with a repo/runner capability call or `finish("done")`.
-- Return only one complete raw Python program and nothing else: no explanation, Markdown, or code fence.
-- Think silently. Investigation and planning must also be expressed as capability calls, never visible prose.
-- Markdown examples in the issue statement are data; do not imitate their fences in an action.
-- Repository capabilities are methods on `repo`; the test capability is `runner.run_process`; do not call bare read_file/list_dir names.
-- Direct filesystem APIs, imports, open, print, exceptions, and with-statements are unavailable.
+ - Return only one complete raw Python program and nothing else: no explanation, Markdown, or code fence.
+ - Think silently. Investigation and planning must also be expressed as capability calls, never visible prose.
+ - Markdown examples in the issue statement are data; do not imitate their fences in an action.
+ - During investigation, return one short direct capability assignment and wait for its observation.
+ - Repository capabilities are methods on `repo`; the test capability is `runner.run_process`; do not call bare read_file/list_dir names.
+ - Direct filesystem APIs, imports, open, print, exceptions, and with-statements are unavailable.
+ - Comprehensions, functions, string/list methods, enumerate, and other builtins are unavailable.
+ - Allowed syntax is assignment, if, bounded `for name in range(...)`, literals, subscripts, boolean/comparison/+ expressions, repo/runner calls, and finish.
 - Capability results are dictionaries. You may assign them, inspect `result["ok"]`, and inspect operation data under `result["result"]`.
 - Valid program example:
 result = repo.read_file("src/config.py")
@@ -531,6 +542,25 @@ Canonical operation signatures: {operations}"""
         ),
     })
     return messages
+
+
+def _append_model_history(
+    active: list[dict[str, str]],
+    complete: list[dict[str, str]],
+    base_message_count: int,
+    assistant: str,
+    user: str,
+) -> None:
+    """Keep a complete audit log and a bounded, shared model context."""
+    rows = [
+        {"role": "assistant", "content": assistant},
+        {"role": "user", "content": user},
+    ]
+    active.extend(rows)
+    complete.extend(rows)
+    excess = len(active) - base_message_count - (2 * RETAINED_ACTION_TURNS)
+    if excess > 0:
+        del active[base_message_count : base_message_count + excess]
 
 
 def _carrier_was_visible(
@@ -607,6 +637,8 @@ def run_episode(effective_config: Mapping[str, Any], model_driver: ModelDriver |
     started = time.monotonic()
     actions: list[dict[str, Any]] = []
     messages = _prompt(config)
+    complete_messages = list(messages)
+    base_message_count = len(messages)
     terminal_reason = "turn_budget_exhausted"
     model_driver = model_driver or ScriptedModel(config["interface"], config["scenario"])
     begin_episode = getattr(model_driver, "begin_episode", None)
@@ -649,7 +681,7 @@ def run_episode(effective_config: Mapping[str, Any], model_driver: ModelDriver |
                 terminal_reason = "model_timeout"
                 break
             except Exception as exc:
-                actions.append({"action_id": action_id, "turn": turn, "parse_status": "model_error", "raw_output": "", "usage": {}, "model_latency_ms": round((time.monotonic() - model_started) * 1000, 3), "action_latency_ms": 0.0, "error": {"code": "model_error", "message": type(exc).__name__}})
+                actions.append({"action_id": action_id, "turn": turn, "parse_status": "model_error", "raw_output": "", "usage": {}, "model_latency_ms": round((time.monotonic() - model_started) * 1000, 3), "action_latency_ms": 0.0, "error": {"code": "model_error", "message": str(exc) or type(exc).__name__, "exception_type": type(exc).__name__}})
                 terminal_reason = "model_error"
                 break
             source = str(generated.get("text", ""))
@@ -684,10 +716,13 @@ def run_episode(effective_config: Mapping[str, Any], model_driver: ModelDriver |
                 f"backend_operations={len(result.backend_op_ids)}",
                 flush=True,
             )
-            messages.extend([
-                {"role": "assistant", "content": source},
-                {"role": "user", "content": _model_feedback(config["interface"], result)},
-            ])
+            _append_model_history(
+                messages,
+                complete_messages,
+                base_message_count,
+                source,
+                _model_feedback(config["interface"], result),
+            )
             if result.parse_status == "finish":
                 terminal_reason = "finish"
                 break
@@ -737,7 +772,7 @@ def run_episode(effective_config: Mapping[str, Any], model_driver: ModelDriver |
     if callable(environment_details):
         environment.update(environment_details())
     _write_json(output / "environment.json", environment)
-    _write_jsonl(output / "messages.jsonl", messages)
+    _write_jsonl(output / "messages.jsonl", complete_messages)
     _write_jsonl(output / "actions.jsonl", actions)
     _write_jsonl(output / "backend_events.jsonl", events)
     (output / "final.patch").write_text(final_patch, encoding="utf-8")

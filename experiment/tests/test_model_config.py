@@ -287,6 +287,40 @@ class R1ModelConfigTests(unittest.TestCase):
             self.assertEqual(snapshot.resolve(), Path(result["snapshot_path"]))
             self.assertGreater(result["cache_bytes"], 0)
 
+    def test_snapshot_digest_is_reused_until_a_model_file_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            snapshot = Path(temporary)
+            weights = snapshot / "model.safetensors"
+            weights.write_bytes(b"weights-v1")
+
+            with mock.patch.object(
+                model_runtime,
+                "_sha256_file",
+                wraps=model_runtime._sha256_file,
+            ) as hash_file:
+                first = model_runtime.digest_snapshot(snapshot, "a" * 40)
+                second = model_runtime.digest_snapshot(snapshot, "a" * 40)
+                weights.write_bytes(b"weights-v2-longer")
+                third = model_runtime.digest_snapshot(snapshot, "a" * 40)
+
+            self.assertEqual("computed", first["cache_status"])
+            self.assertEqual("reused", second["cache_status"])
+            self.assertEqual(0.0, second["digest_seconds"])
+            self.assertEqual("computed", third["cache_status"])
+            self.assertNotEqual(first["snapshot_sha256"], third["snapshot_sha256"])
+            self.assertEqual(2, hash_file.call_count)
+
+    def test_snapshot_digest_force_rehash_bypasses_cache(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            snapshot = Path(temporary)
+            (snapshot / "model.safetensors").write_bytes(b"weights")
+            model_runtime.digest_snapshot(snapshot, "a" * 40)
+
+            with mock.patch.dict(os.environ, {"R1_FORCE_SNAPSHOT_REHASH": "1"}):
+                result = model_runtime.digest_snapshot(snapshot, "a" * 40)
+
+            self.assertEqual("computed", result["cache_status"])
+
     def test_failure_still_writes_complete_attempt_bundle(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "run"
