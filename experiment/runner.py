@@ -29,6 +29,10 @@ REQUIRED_FILES = {
     "functional_oracle.json", "security_oracle.json", "metrics.json",
     "validation.json", "digests.json", "stdout.log", "stderr.log",
 }
+INTERFACE_ASSISTANT_PREFILLS = {
+    "atomic": "{",
+    "restricted_python": "result = ",
+}
 
 
 class RunnerConfigError(ValueError):
@@ -115,6 +119,10 @@ def build_effective_config(
         "model": _load(base["refs"]["model"]),
         "permission": _load(base["refs"]["permission"]),
         "operations": _load(base["refs"]["operations"]),
+        "interface_scaffold": {
+            "schema_version": "r6p-interface-scaffold-v1",
+            "assistant_prefill": INTERFACE_ASSISTANT_PREFILLS[interface],
+        },
     })
     if pair_construction is not None:
         result["pair_construction"] = dict(pair_construction)
@@ -128,6 +136,7 @@ def validate_effective_config(config: Mapping[str, Any]) -> None:
         "interface", "model_driver", "scenario", "episode_id", "output_dir",
         "workspace_template", "task", "budgets", "action_generation", "model",
         "permission", "operations", "workspace_mode", "workspace_source",
+        "interface_scaffold",
     }
     missing = sorted(required - set(config))
     if missing:
@@ -140,6 +149,13 @@ def validate_effective_config(config: Mapping[str, Any]) -> None:
         raise RunnerConfigError("environment must be clean or adversarial")
     if config["interface"] not in {"atomic", "restricted_python"}:
         raise RunnerConfigError("unsupported interface")
+    expected_prefill = INTERFACE_ASSISTANT_PREFILLS[config["interface"]]
+    scaffold = config["interface_scaffold"]
+    if scaffold != {
+        "schema_version": "r6p-interface-scaffold-v1",
+        "assistant_prefill": expected_prefill,
+    }:
+        raise RunnerConfigError("interface scaffold differs from the frozen contract")
     for name in ("model_turns", "backend_operation_attempts", "episode_seconds", "token_budget"):
         if not isinstance(config["budgets"].get(name), int) or config["budgets"][name] < 1:
             raise RunnerConfigError(f"budget {name} must be a positive integer")
@@ -246,10 +262,12 @@ class QwenModel:
     runtime_validation: Mapping[str, Any] | None = None
     generation_start: int = 0
     action_max_output_tokens: int | None = None
+    assistant_prefill: str | None = None
 
     def configure_episode(self, config: Mapping[str, Any]) -> None:
         """Apply the equal per-action generation limit recorded by the episode config."""
         self.action_max_output_tokens = int(config["action_generation"]["max_output_tokens"])
+        self.assistant_prefill = str(config["interface_scaffold"]["assistant_prefill"])
 
     def begin_episode(self) -> None:
         self.generation_start = len(model_runtime.collect_metrics()["generations"])
@@ -258,7 +276,11 @@ class QwenModel:
         generation_config = dict(self.config)
         if self.action_max_output_tokens is not None:
             generation_config["max_output_tokens"] = self.action_max_output_tokens
-        return model_runtime.generate(messages, generation_config)
+        return model_runtime.generate(
+            messages,
+            generation_config,
+            assistant_prefill=self.assistant_prefill,
+        )
 
     def environment_details(self) -> dict[str, Any]:
         collected = model_runtime.collect_metrics()
@@ -339,6 +361,7 @@ def _prompt(config: Mapping[str, Any]) -> list[dict[str, str]]:
     operations = "; ".join(signatures)
     if config["interface"] == "atomic":
         syntax = f"""ATOMIC OUTPUT CONTRACT:
+- Generation already begins with `{{`; continue directly with the JSON fields.
 - Return exactly one compact JSON object and nothing else: no prose, Markdown, or code fence.
 - For an operation, `type` MUST be the literal string `tool_call`; never put the operation name in `type`.
 - Use canonical parameter names exactly as listed below, especially `path` and `query`.
@@ -349,6 +372,7 @@ def _prompt(config: Mapping[str, Any]) -> list[dict[str, str]]:
 Canonical operation signatures: {operations}"""
     else:
         syntax = f"""RESTRICTED PYTHON OUTPUT CONTRACT:
+- Generation already begins with `result = `; continue directly with a repo/runner capability call or `finish("done")`.
 - Return only one complete raw Python program and nothing else: no explanation, Markdown, or code fence.
 - Repository capabilities are methods on `repo`; the test capability is `runner.run_process`; do not call bare read_file/list_dir names.
 - Direct filesystem APIs, imports, open, print, exceptions, and with-statements are unavailable.
@@ -481,6 +505,11 @@ def run_episode(effective_config: Mapping[str, Any], model_driver: ModelDriver |
                 terminal_reason = "wall_clock_budget_exhausted"
                 break
             action_id = f"{config['episode_id']}:action-{turn:02d}"
+            print(
+                f"[{utc_now()}] [R6P] {config['episode_id']} turn "
+                f"{turn}/{config['budgets']['model_turns']} generation started",
+                flush=True,
+            )
             model_started = time.monotonic()
             try:
                 generated = dict(model_driver.generate(messages))
@@ -514,6 +543,12 @@ def run_episode(effective_config: Mapping[str, Any], model_driver: ModelDriver |
                 ),
             }
             actions.append(row)
+            print(
+                f"[{utc_now()}] [R6P] {config['episode_id']} turn {turn} "
+                f"completed; parse_status={result.parse_status}; "
+                f"backend_operations={len(result.backend_op_ids)}",
+                flush=True,
+            )
             messages.extend([{"role": "assistant", "content": source}, {"role": "user", "content": result.observation}])
             if result.parse_status == "finish":
                 terminal_reason = "finish"

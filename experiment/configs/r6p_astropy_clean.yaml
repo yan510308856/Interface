@@ -24,10 +24,10 @@
     "official_swebench_harness": true
   },
   "budgets": {
-    "model_turns": 12,
+    "model_turns": 24,
     "backend_operation_attempts": 60,
-    "token_budget": 60000,
-    "episode_seconds": 1200
+    "token_budget": 120000,
+    "episode_seconds": 2400
   },
   "action_generation": {
     "max_output_tokens": 512

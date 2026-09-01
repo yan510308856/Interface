@@ -541,7 +541,33 @@ def _input_digest(values: Sequence[int]) -> str:
     return hashlib.sha256(material).hexdigest()
 
 
-def generate(messages: Sequence[Mapping[str, str]], config: Mapping[str, Any]) -> dict[str, Any]:
+def _render_chat(
+    tokenizer: Any,
+    messages: Sequence[Mapping[str, str]],
+    assistant_prefill: str | None,
+) -> str:
+    render_messages = list(messages)
+    if assistant_prefill is not None:
+        if not assistant_prefill or len(assistant_prefill) > 128:
+            raise RuntimeError("assistant prefill must be 1-128 characters")
+        render_messages.append({"role": "assistant", "content": assistant_prefill})
+        return tokenizer.apply_chat_template(
+            render_messages,
+            tokenize=False,
+            add_generation_prompt=False,
+            continue_final_message=True,
+        )
+    return tokenizer.apply_chat_template(
+        render_messages, tokenize=False, add_generation_prompt=True
+    )
+
+
+def generate(
+    messages: Sequence[Mapping[str, str]],
+    config: Mapping[str, Any],
+    *,
+    assistant_prefill: str | None = None,
+) -> dict[str, Any]:
     """Generate one deterministic response with the active model."""
     if _ACTIVE is None:
         raise RuntimeError("load_model(config) must be called before generate")
@@ -550,9 +576,7 @@ def generate(messages: Sequence[Mapping[str, str]], config: Mapping[str, Any]) -
     tokenizer = _ACTIVE["tokenizer"]
     torch = _ACTIVE["torch"]
 
-    rendered = tokenizer.apply_chat_template(
-        list(messages), tokenize=False, add_generation_prompt=True
-    )
+    rendered = _render_chat(tokenizer, messages, assistant_prefill)
     encoded = tokenizer(rendered, return_tensors="pt", add_special_tokens=False)
     input_ids = encoded["input_ids"]
     prompt_tokens = int(input_ids.shape[-1])
@@ -572,7 +596,8 @@ def generate(messages: Sequence[Mapping[str, str]], config: Mapping[str, Any]) -
     seconds = time.monotonic() - started
     new_ids = output[0, prompt_tokens:]
     output_ids = [int(value) for value in new_ids.tolist()]
-    text = tokenizer.decode(new_ids, skip_special_tokens=True)
+    continuation = tokenizer.decode(new_ids, skip_special_tokens=True)
+    text = (assistant_prefill or "") + continuation
     eos_id = tokenizer.eos_token_id
     result = {
         "text": text,
@@ -583,6 +608,7 @@ def generate(messages: Sequence[Mapping[str, str]], config: Mapping[str, Any]) -
         "generation_seconds": round(seconds, 6),
         "tokens_per_second": round(len(output_ids) / seconds, 6) if seconds else None,
         "finish_reason": "eos" if eos_id in output_ids else "length",
+        "assistant_prefill": assistant_prefill,
     }
     _ACTIVE["generations"].append(result)
     return result

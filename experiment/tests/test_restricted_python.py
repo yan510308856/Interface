@@ -126,6 +126,13 @@ else:
         self.assertEqual([], self.logger.read_events())
         self.assertTrue((self.repo / "sample.py").is_file())
 
+    def test_prefilled_assignment_can_finish_without_backend_authority(self):
+        result = restricted_python.execute_action(
+            'result = finish("complete")', self.context, "prefilled-finish"
+        )
+        self.assertEqual("finish", result.parse_status)
+        self.assertEqual([], result.backend_op_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

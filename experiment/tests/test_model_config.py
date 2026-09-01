@@ -124,6 +124,24 @@ class R1ModelConfigTests(unittest.TestCase):
             {prompt["parser"] for prompt in prompts},
         )
 
+    def test_assistant_prefill_continues_one_open_assistant_message(self):
+        tokenizer = mock.Mock()
+        tokenizer.apply_chat_template.return_value = "rendered"
+        messages = [{"role": "user", "content": "task"}]
+
+        rendered = model_runtime._render_chat(tokenizer, messages, "{")
+
+        self.assertEqual("rendered", rendered)
+        tokenizer.apply_chat_template.assert_called_once_with(
+            [
+                {"role": "user", "content": "task"},
+                {"role": "assistant", "content": "{"},
+            ],
+            tokenize=False,
+            add_generation_prompt=False,
+            continue_final_message=True,
+        )
+
     @mock.patch("experiment.model_runtime.collect_colab_runtime_identity")
     @mock.patch("experiment.model_runtime.importlib.metadata.version")
     def test_colab_runtime_validation_reads_packages_and_identity(

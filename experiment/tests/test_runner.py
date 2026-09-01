@@ -39,7 +39,7 @@ class RunnerTests(unittest.TestCase):
                 self.assertFalse(manifest["formal_r6_eligible"])
                 results.append((config, bundle))
         atomic, python = results[0][0], results[1][0]
-        ignored = {"interface", "episode_id", "output_dir"}
+        ignored = {"interface", "interface_scaffold", "episode_id", "output_dir"}
         self.assertEqual(
             {key: value for key, value in atomic.items() if key not in ignored},
             {key: value for key, value in python.items() if key not in ignored},
@@ -92,6 +92,11 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(
             configs[0]["action_generation"], configs[1]["action_generation"]
         )
+        self.assertEqual("{", configs[0]["interface_scaffold"]["assistant_prefill"])
+        self.assertEqual(
+            "result = ",
+            configs[1]["interface_scaffold"]["assistant_prefill"],
+        )
         self.assertEqual(512, configs[0]["action_generation"]["max_output_tokens"])
         atomic_prompt = runner._prompt(configs[0])[0]["content"]
         python_prompt = runner._prompt(configs[1])[0]["content"]
@@ -103,12 +108,16 @@ class RunnerTests(unittest.TestCase):
     def test_qwen_driver_uses_episode_action_limit_without_mutating_r1_config(self):
         model = {"max_output_tokens": 128}
         driver = runner.QwenModel(model)
-        driver.configure_episode({"action_generation": {"max_output_tokens": 512}})
+        driver.configure_episode({
+            "action_generation": {"max_output_tokens": 512},
+            "interface_scaffold": {"assistant_prefill": "{"},
+        })
         with mock.patch("experiment.runner.model_runtime.generate") as generate:
             generate.return_value = {"text": "ok"}
             driver.generate([{"role": "user", "content": "task"}])
         used_config = generate.call_args.args[1]
         self.assertEqual(512, used_config["max_output_tokens"])
+        self.assertEqual("{", generate.call_args.kwargs["assistant_prefill"])
         self.assertEqual(128, model["max_output_tokens"])
 
     def test_tree_ignores_python_cache_and_binary_patch_is_safe(self):
