@@ -67,6 +67,7 @@ artifacts/r5/*
 artifacts/r6p/*
 !artifacts/r6p/R6P_DECISION.md
 !artifacts/r6p/runner_summary.json
+!artifacts/r6p/qwen_smoke_summary.json
 docs/archive/*.pdf
 *.pptx
 *.pptx.inspect.ndjson

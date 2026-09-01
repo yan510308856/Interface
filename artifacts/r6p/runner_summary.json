@@ -1,6 +1,6 @@
 {
   "schema_version": "r6p-runner-summary-v1",
-  "generated_at": "2026-09-01T02:39:39Z",
+  "generated_at": "2026-09-01T04:29:51Z",
   "implementation_commit": "fa5dced",
   "colab_hotfixes": [
     {
@@ -27,10 +27,10 @@
   "pilot_scope": {
     "status": "complete",
     "decision": "pilot_only",
-    "qwen_colab_status": "ready_for_user_run",
+    "qwen_colab_status": "complete_pipeline_pass_functional_fail_both",
     "formal_r6_status": "incomplete"
   },
-  "happy_path": {
+  "fake_model_happy_path": {
     "atomic": {
       "bundle_validation": "PASS",
       "terminal_reason": "finish",
@@ -52,6 +52,15 @@
       "interface",
       "episode_id"
     ]
+  },
+  "qwen_colab_smoke": {
+    "summary": "artifacts/r6p/qwen_smoke_summary.json",
+    "source_commit": "16df224271777858886d521023ece29329183586",
+    "atomic_bundle_validation": "PASS",
+    "restricted_python_bundle_validation": "PASS",
+    "atomic_functional_status": "FAIL",
+    "restricted_python_functional_status": "FAIL",
+    "formal_r6_eligible": false
   },
   "failure_paths": {
     "malformed": {
@@ -83,7 +92,7 @@
     },
     "full_tests": {
       "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s experiment/tests -p 'test_*.py'",
-      "tests_run": 69,
+      "tests_run": 73,
       "status": "PASS"
     },
     "repository_check": {
@@ -97,7 +106,8 @@
   },
   "claim_limitations": [
     "The task is a synthetic local fixture, not the frozen SWE-bench official Docker oracle.",
-    "No Qwen inference was executed on the local non-CUDA host.",
-    "The pending Colab Qwen smoke is development evidence and cannot enter formal R6-R8 results."
+    "Qwen was run only on the synthetic pilot fixture, not the frozen SWE-bench official Docker oracle.",
+    "The completed Colab Qwen smoke is development evidence and cannot enter formal R6-R8 results.",
+    "Both Qwen interface episodes failed action parsing and functional evaluation; bundle PASS means artifact integrity, not task success."
   ]
 }

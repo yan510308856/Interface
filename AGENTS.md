@@ -21,9 +21,11 @@ If these documents conflict, stop and report the conflict before editing code.
 - Current formal stage: **R2 — Clean task selection and freeze** remains unpassed
   (`status: incomplete`, `decision: pilot_only`) because no native x86_64 replay is
   available.
-- Selected development route: **Implementation Pilot**. The R5 interface pilot is
-  complete at implementation commit `71ec91d`; the next implementation stage is
-  **R6-P — local fake-model runner and optional Colab Qwen pipeline smoke**.
+- Selected development route: **Implementation Pilot**. **R6-P — local fake-model
+  runner and Colab Qwen pipeline smoke** is complete. The Qwen bundles passed
+  artifact validation but both interfaces produced only invalid actions and failed
+  the synthetic functional oracle. Human review must choose whether to implement
+  R7-P or wait for/resume formal R2.
 - R6-P artifacts are development evidence only and cannot unlock formal R6–R8 or
   support a four-cell interface-effect claim.
 - **R1 — Qwen / ModelScope / A100 feasibility** passed on 2026-08-30; its frozen

@@ -59,7 +59,7 @@ R4 backend/permission/audit pilot
  ↓
 R5 interface-equivalence pilot（complete）
  ↓
-R6-P agent-loop implementation pilot（next）
+R6-P agent-loop implementation pilot（complete）
 ```
 
 这条路线只回答“组件能否按契约组合并产生可重放 artifacts”，不回答 Atomic 与 Restricted Python
@@ -1105,13 +1105,15 @@ pilot stage 可以据此继续；`pilot_only` 永远不能解锁同编号或后�
 
 ## 16. 当前迁移状态
 
-R0 与 R1 已正式通过。正式 R2 因缺少原生 x86_64 重放保持 `incomplete/pilot_only`；R3–R5 的本地
-实现证据不能越过该 gate。当前选择的 Implementation Pilot 已完成 R5，下一代码任务是 R6-P。
+R0 与 R1 已正式通过。正式 R2 因缺少原生 x86_64 重放保持 `incomplete/pilot_only`；R3–R6-P 的
+开发证据不能越过该 gate。当前 Implementation Pilot 已完成 R6-P；Qwen 两个 bundle 的 artifact
+validation 均通过，但两个接口均为 invalid-action/functional-fail outcome。下一 pilot stage 待 human
+review 决定。
 旧 D0 artifacts 继续作为 v28 provenance 保留，不能代表任何 v29 R-stage。
 
 ```text
-status: R5 implementation pilot complete; formal R2 remains incomplete
-artifact: artifacts/r5/R5_DECISION.md, artifacts/r5/equivalence_report.json
+status: R6-P implementation pilot complete; formal R2 remains incomplete
+artifact: artifacts/r6p/R6P_DECISION.md, artifacts/r6p/runner_summary.json, artifacts/r6p/qwen_smoke_summary.json
 decision: pilot_only
 open_risks:
   - no native x86_64 official-harness replay
@@ -1119,10 +1121,10 @@ open_risks:
   - pilot outputs cannot support formal interface-effect claims
 provenance:
   protocol_revision_date: 2026-08-31
-  r5_implementation_commit: 71ec91d
+  r6p_qwen_source_commit: 16df224271777858886d521023ece29329183586
   model_host: Colab A100
   model_source: ModelScope
   source_control: GitHub exact commit SHA
   large_artifacts: private Google Drive digest bundles
-next_stage: R6-P agent-loop implementation pilot
+next_stage: human review to choose R7-P or resume formal R2
 ```

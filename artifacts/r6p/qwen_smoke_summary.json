@@ -1,0 +1,82 @@
+{
+  "schema_version": "r6p-qwen-smoke-summary-v1",
+  "generated_at": "2026-09-01T04:29:51Z",
+  "evidence_class": "development_evidence_only",
+  "formal_r6_eligible": false,
+  "source": {
+    "host": "Google Colab A100",
+    "source_commit": "16df224271777858886d521023ece29329183586",
+    "raw_bundles": "private Google Drive",
+    "reported_by": "human operator from validator output and bundle summaries"
+  },
+  "model": {
+    "provider": "modelscope",
+    "model_id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+    "resolved_revision": "5ea29678865934640d71cfece1aedfa1e84599a4"
+  },
+  "runtime_validation": {
+    "compatibility": "colab_release_drift_allowed",
+    "drift": {
+      "colab_release": {
+        "expected": "release-colab-external-images_20260827-060052_RC00",
+        "actual": "release-colab-external-images_20260828-060049_RC00"
+      }
+    },
+    "exact_match_fields": {
+      "python": "3.13.15",
+      "torch": "2.11.0+cu128",
+      "cuda_runtime": "12.8",
+      "nvidia_driver": "580.82.07",
+      "gpu_name": "NVIDIA A100-SXM4-80GB",
+      "gpu_memory_mib": 81920
+    }
+  },
+  "bundles": {
+    "atomic": {
+      "episode_id": "r6p-qwen-002-atomic",
+      "digests_json_sha256": "4d1cd75e3f29dd9210a485923047e35701423708f339f23fb733c1793d3cdbc2",
+      "bundle_validation": "PASS",
+      "terminal_reason": "turn_budget_exhausted",
+      "functional_status": "FAIL",
+      "model_turns": 6,
+      "actions_invalid": 6,
+      "backend_operation_attempts": 0,
+      "prompt_tokens": 2959,
+      "output_tokens": 155,
+      "model_latency_ms": 15449.839,
+      "patch_bytes": 0,
+      "failure_classification": "model_interface_adherence_failure",
+      "observed_causes": [
+        "action type contained the operation name instead of tool_call",
+        "arguments used non-schema names such as pattern and file"
+      ]
+    },
+    "restricted_python": {
+      "episode_id": "r6p-qwen-002-restricted_python",
+      "digests_json_sha256": "f2098d3da20d9e24eadb6c10f22e5160c22b185d02c6fc6299f1f470f57dd81a",
+      "bundle_validation": "PASS",
+      "terminal_reason": "turn_budget_exhausted",
+      "functional_status": "FAIL",
+      "model_turns": 6,
+      "actions_invalid": 6,
+      "backend_operation_attempts": 0,
+      "prompt_tokens": 4617,
+      "output_tokens": 768,
+      "model_latency_ms": 63715.064,
+      "patch_bytes": 0,
+      "failure_classification": "model_interface_adherence_failure",
+      "observed_causes": [
+        "markdown fences and prose were emitted around programs",
+        "programs used unsupported direct functions, try/except, print, and open",
+        "several generations ended with truncated Python syntax at the 128-token output limit"
+      ]
+    }
+  },
+  "decision": {
+    "pipeline_and_artifact_gate": "PASS",
+    "functional_outcome": "FAIL_BOTH_INTERFACES",
+    "interface_effect_claim_allowed": false,
+    "retry_allowed_for_this_pilot_identity": false,
+    "reason": "Agent/model failure is an outcome; changing parser, prompt, or output budget and overwriting these bundles would violate the frozen pilot identity."
+  }
+}

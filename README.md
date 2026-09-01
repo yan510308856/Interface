@@ -15,9 +15,10 @@ A100 feasibility** 已通过。R1 的冻结配置在两个独立 A100 worker 中
 digest、输入 token IDs 与 runtime identity 一致。正式实验仍停在 **R2**：状态保持
 `incomplete`，决策为 `pilot_only`。
 
-项目当前选择独立的 **Implementation Pilot** 路线。R5 capability-equivalence pilot 已完成，
-下一步是 **R6-P**：先用 fake model 构建可重放 runner 和 result bundle，再选择性地在 Colab A100
-接入冻结 Qwen 做开发性 pipeline smoke。R6-P 不解锁正式 R6–R8，也不产生四-cell 比较结论。
+项目当前选择独立的 **Implementation Pilot** 路线。R6-P runner 与 Colab Qwen pipeline smoke 已完成：
+两个真实 Qwen bundle 均通过完整性与 metrics 重算校验，但两个接口都产生 6/6 invalid actions、
+0 backend operations、空 patch 和 functional FAIL。该结果是开发性模型/interface adherence outcome，
+不解锁正式 R6–R8，也不产生四-cell 比较结论。下一 pilot stage 由 human review 决定。
 现有 D0 代码和 artifacts 仅是 v28 provenance，不代表 v29 实验结果。
 
 ## 先读什么
@@ -210,9 +211,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate_d0.py --run-task-validation
 
 ## Demo 完成路径
 
-当前 Implementation Pilot 已完成 R5，下一步是 R6-P。正式路径仍要求 R2 在原生 x86_64
-Docker host 通过后，才可将 R3–R8 的结果称为受控实验阶段证据。两条路线共享代码和安全边界，
-但 artifacts、decision 与研究声明保持分离。
+当前 Implementation Pilot 已完成 R6-P；human review 决定继续 R7-P 或等待 formal R2。正式路径仍要求
+R2 在原生 x86_64 Docker host 通过后，才可将 R3–R8 的结果称为受控实验阶段证据。两条路线共享代码
+和安全边界，但 artifacts、decision 与研究声明保持分离。
 
 ## 安全与复现
 
