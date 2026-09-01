@@ -2,6 +2,14 @@
   "schema_version": "r6p-runner-summary-v1",
   "generated_at": "2026-09-01T02:39:39Z",
   "implementation_commit": "fa5dced",
+  "colab_hotfixes": [
+    {
+      "commit": "b10585c",
+      "failure": "validate_colab_runtime raised NameError before model load because importlib.metadata was not imported",
+      "resolution": "import importlib.metadata and execute the package/runtime validation path in a regression test",
+      "full_test_status": "PASS (70 tests)"
+    }
+  ],
   "evidence_class": "development_evidence_only",
   "formal_r6_eligible": false,
   "pilot_scope": {

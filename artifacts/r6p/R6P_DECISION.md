@@ -4,7 +4,7 @@ status: complete (pilot scope); formal R6 remains incomplete
 artifact: `artifacts/r6p/runner_summary.json`; implementation at `fa5dced`  
 decision: pilot_only  
 open_risks: real Qwen Colab pipeline has not yet been run from the pushed commit; frozen SWE-bench oracle remains unavailable without the formal R2 x86_64 Docker host  
-provenance: 69 offline tests passed; repository check and diff check passed; six fresh fake bundles (Atomic Clean, Restricted Python Clean, malformed, model timeout, task failure, empty patch) passed digest and metric recomputation validation  
+provenance: implementation `fa5dced`; Colab pre-load failure reproduced and fixed at `b10585c`; 70 offline tests passed after the hotfix; repository check and diff check passed; six fresh fake bundles (Atomic Clean, Restricted Python Clean, malformed, model timeout, task failure, empty patch) passed digest and metric recomputation validation  
 next_stage: user-run R6-P Qwen Clean pipeline smoke on Colab A100, then review the two Drive bundles; formal path remains R2
 
 ## Decision
@@ -24,3 +24,12 @@ This is development evidence only. The synthetic oracle is not the official
 SWE-bench harness, the real Qwen smoke is pending the user's Colab A100 session,
 and neither the local bundles nor the future Colab pilot bundles are eligible for
 formal R6, R7, or R8 claims.
+
+## Colab hotfix record
+
+The first user Colab invocation stopped before model loading because
+`validate_colab_runtime()` referenced `importlib.metadata` without importing it.
+Commit `b10585c` adds the missing import and a regression test that executes the
+package-version and frozen-runtime validation path. No episode bundle was created
+by the failed invocation, so it is an implementation/setup failure rather than an
+agent or model outcome.
