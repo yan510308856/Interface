@@ -141,6 +141,13 @@ episode outcome 出包；metrics 从 JSONL raw events 重算。所有 R6-P bundl
 `development_evidence_only` 与 `formal_r6_eligible: false`；synthetic fixture 成功或 Qwen 行为都不是
 正式 SWE-bench 结果。
 
+真实 Astropy pilot 暴露出 Qwen 会在 action 前输出解释或 Markdown，并在 invalid 历史中重复该格式。
+当前 v2 interface scaffold 使用不含真实任务答案的 fictional few-shot action trajectory，并在 invalid
+后给出显式 action-only retry；严格 parser、raw output、canonical backend、permission 与预算均不变。
+该变更只用于消除模型—协议不兼容的开发性 floor effect，不改变正式 R6 的失败记录规则。
+两个接口还共享同一个显式停止预算：连续 3 次 invalid action 后以
+`invalid_action_streak_exhausted` 结束，仍照常保存 bundle 并运行 oracle，避免继续空耗 GPU 时间。
+
 本地 fake smoke：
 
 ```bash

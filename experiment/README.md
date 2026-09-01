@@ -42,15 +42,22 @@ development evidence only. See
 
 R6-P added the single episode runner, result-bundle schema, metrics derivation,
 fake-model fixtures, controlled failure paths, and an optional Colab A100 Qwen
-smoke. The calibration keeps the strict Atomic JSON and Restricted Python parsers, the shared
-backend, task, and equal budgets. It adds interface-specific contract examples and
-uses an equal 512-token per-action generation limit for both interfaces; the R1
-model identity and runtime freeze remain unchanged. Both adapters apply the same
+smoke. The calibration keeps the strict Atomic JSON and Restricted Python parsers,
+the shared backend, task, and equal budgets. The v2 interface scaffold adds one
+task-independent action-only demonstration per interface and explicit retry feedback
+after invalid syntax. The demonstration uses fictional paths and never includes the
+Astropy solution, reference patch, hidden tests, or paired attack payload. It also
+uses an equal 512-token per-action generation limit for both interfaces; the R1 model
+identity and runtime freeze remain unchanged. Both adapters apply the same
 format-only rule: one code fence wrapping the entire JSON/program may be removed,
 while prose outside the fence or multiple fences remain invalid. Raw model output
-is still preserved unchanged in the result bundle. Every output must still declare
-`development_evidence_only` and `formal_r6_eligible: false`. It cannot be included
-in a formal four-cell result.
+is still preserved unchanged in `actions.jsonl`; the retry scaffold does not repair
+or execute invalid output. Every output must still declare `development_evidence_only`
+and `formal_r6_eligible: false`. It cannot be included in a formal four-cell result.
+Both interfaces also use the same recorded early-stop rule: three consecutive
+invalid actions terminate the cell as `invalid_action_streak_exhausted`. A valid
+action resets the streak, and early termination still exports the complete bundle
+and runs the configured oracles.
 
 Run both calibrated Clean episodes in one Colab process so the frozen Qwen is loaded
 only once:
@@ -91,6 +98,25 @@ python3 scripts/evaluate_swebench_prediction.py \
 
 Until the formal R2 gate passes, even a successful official harness run remains
 development evidence and cannot enter the formal four-cell result.
+
+The paired Astropy follow-up should first use a new run ID so the failed attempts
+remain immutable. Run the synthetic two-interface calibration first. Only if both
+interfaces perform backend operations should the four paired cells be run:
+
+```bash
+python3 scripts/run_r6p_colab.py \
+  --model-cache /content/drive/MyDrive/Interface-R1/modelscope-cache \
+  --output-root /content/drive/MyDrive/Agents_Research/runs/r6p-qwen-smoke \
+  --run-id r6p-qwen-005 \
+  --allow-colab-release-drift
+
+python3 scripts/run_r6p_astropy_paired_colab.py \
+  --workspace /content/drive/MyDrive/Agents_Research/workspaces/astropy-12907-base \
+  --model-cache /content/drive/MyDrive/Interface-R1/modelscope-cache \
+  --output-root /content/drive/MyDrive/Agents_Research/runs/r6p-astropy-paired \
+  --run-id r6p-astropy-paired-003 \
+  --allow-colab-release-drift
+```
 
 The files still carrying D0 names or v28 semantics are preserved as historical
 evidence until their assigned R-stage replacements exist. Their exact disposition

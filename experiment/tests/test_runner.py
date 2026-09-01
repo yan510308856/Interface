@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import ast
 import copy
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from experiment import pair_builder, runner
@@ -97,13 +99,88 @@ class RunnerTests(unittest.TestCase):
             "result = ",
             configs[1]["interface_scaffold"]["assistant_prefill"],
         )
+        for config in configs:
+            self.assertEqual(
+                "r6p-interface-scaffold-v2",
+                config["interface_scaffold"]["schema_version"],
+            )
+            self.assertEqual(
+                "qwen-action-only-demo-v1",
+                config["interface_scaffold"]["format_demonstration"],
+            )
+            self.assertEqual(
+                "qwen-invalid-action-feedback-v1",
+                config["interface_scaffold"]["invalid_feedback"],
+            )
         self.assertEqual(512, configs[0]["action_generation"]["max_output_tokens"])
-        atomic_prompt = runner._prompt(configs[0])[0]["content"]
-        python_prompt = runner._prompt(configs[1])[0]["content"]
+        atomic_messages = runner._prompt(configs[0])
+        python_messages = runner._prompt(configs[1])
+        atomic_prompt = atomic_messages[0]["content"]
+        python_prompt = python_messages[0]["content"]
         self.assertIn('literal string `tool_call`', atomic_prompt)
         self.assertIn('methods on `repo`', python_prompt)
         self.assertNotIn("sample.py", atomic_prompt)
         self.assertNotIn("sample.py", python_prompt)
+        self.assertEqual("system", atomic_messages[0]["role"])
+        self.assertEqual("user", atomic_messages[-1]["role"])
+        self.assertIn("BEGIN REAL TASK", atomic_messages[-1]["content"])
+        self.assertIn(configs[0]["task"]["problem_statement"], atomic_messages[-1]["content"])
+        atomic_examples = [
+            row["content"] for row in atomic_messages[1:-1] if row["role"] == "assistant"
+        ]
+        python_examples = [
+            row["content"] for row in python_messages[1:-1] if row["role"] == "assistant"
+        ]
+        self.assertTrue(all(isinstance(json.loads(source), dict) for source in atomic_examples))
+        self.assertTrue(all(ast.parse(source, mode="exec") for source in python_examples))
+        self.assertTrue(all("```" not in source for source in atomic_examples + python_examples))
+
+    def test_invalid_feedback_is_explicit_without_rewriting_the_observation(self):
+        invalid = SimpleNamespace(parse_status="invalid", observation='{"responses":[]}')
+        valid = SimpleNamespace(parse_status="ok", observation='{"responses":[1]}')
+
+        atomic = runner._model_feedback("atomic", invalid)
+        python = runner._model_feedback("restricted_python", invalid)
+
+        self.assertTrue(atomic.startswith(invalid.observation))
+        self.assertIn("PROTOCOL RETRY", atomic)
+        self.assertIn("one JSON tool_call", atomic)
+        self.assertTrue(python.startswith(invalid.observation))
+        self.assertIn("raw Restricted Python", python)
+        self.assertEqual(valid.observation, runner._model_feedback("atomic", valid))
+
+    def test_three_consecutive_invalid_actions_stop_each_interface_early(self):
+        class AlwaysInvalidDriver:
+            def generate(self, messages):
+                return {
+                    "text": "still not an action",
+                    "prompt_tokens": 1,
+                    "output_tokens": 1,
+                    "generation_seconds": 0.0,
+                }
+
+        for interface in ("atomic", "restricted_python"):
+            with self.subTest(interface=interface), tempfile.TemporaryDirectory() as temporary:
+                config = runner.build_effective_config(
+                    CONFIG,
+                    interface=interface,
+                    model="fake",
+                    output_root=temporary,
+                    episode_id=f"invalid-streak-{interface}",
+                )
+                self.assertEqual(3, config["budgets"]["consecutive_invalid_actions"])
+
+                bundle = runner.run_episode(config, AlwaysInvalidDriver())
+                manifest = json.loads((bundle / "run_manifest.json").read_text())
+                actions = [
+                    json.loads(line)
+                    for line in (bundle / "actions.jsonl").read_text().splitlines()
+                ]
+
+                self.assertEqual("invalid_action_streak_exhausted", manifest["terminal_reason"])
+                self.assertEqual(3, len(actions))
+                self.assertTrue(all(row["parse_status"] == "invalid" for row in actions))
+                self.assertEqual("PASS", runner.validate_bundle(bundle)["status"])
 
     def test_qwen_driver_uses_episode_action_limit_without_mutating_r1_config(self):
         model = {"max_output_tokens": 128}

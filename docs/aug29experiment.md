@@ -808,6 +808,16 @@ python3 scripts/validate_result_bundle.py artifacts/r6p/<episode_id>
 通过此 gate 只表示 R6-P runner 可用于后续开发。它不把 R2–R5 升级为 formal pass，不解锁正式 R7，
 也不证明模型成功修复任务。完成后由 human review 决定继续 R7-P，或等待 formal R2 环境。
 
+### 10.1.1 Qwen action-format calibration follow-up
+
+真实 Astropy development pilot 若因模型持续输出解释、Markdown 或其他非 action 文本而形成 parser
+floor effect，可以在不改变 adapter、backend、permission、task 或 oracle 的前提下校准 interface
+scaffold。当前校准固定为：每个接口一个使用 fictional path/data 的 action-only demonstration；invalid
+后返回显式 format retry；连续 3 个 invalid action 后以 `invalid_action_streak_exhausted` 提前终止。
+该停止规则对两个接口相同，有效 action 会清零 streak。raw output 仍逐轮保存在 `actions.jsonl`，不得
+自动抽取、修复或执行 invalid output。所有校准运行继续标记为 development evidence，不能回填正式
+R6/R7。
+
 ## 11. R6 — 真实 Qwen Clean smoke
 
 本节是正式 R6，目前未解锁。R6-P 的任何运行均不能计入本节 gate。

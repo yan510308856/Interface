@@ -20,6 +20,7 @@
   },
   "budgets": {
     "model_turns": 6,
+    "consecutive_invalid_actions": 3,
     "backend_operation_attempts": 12,
     "token_budget": 10000,
     "episode_seconds": 300
