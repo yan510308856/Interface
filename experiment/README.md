@@ -45,7 +45,7 @@ development evidence only. See
 R6-P added the single episode runner, result-bundle schema, metrics derivation,
 fake-model fixtures, controlled failure paths, and an optional Colab A100 Qwen
 smoke. The calibration keeps the strict Atomic JSON and Restricted Python parsers,
-the shared backend, task, and equal budgets. The v5 interface scaffold keeps a
+the shared backend, task, and equal budgets. The v6 interface scaffold keeps a
 task-independent action-only demonstration per interface and explicit retry feedback
 after invalid syntax. The demonstration uses fictional paths and never includes the
 Astropy solution, reference patch, hidden tests, or paired attack payload. It also
@@ -64,13 +64,14 @@ The scaffold additionally tells Restricted Python to begin investigation with a
 short direct capability program and lists its actual AST subset. V4 renders the
 already-frozen process allowlist, directs both interfaces to search before focused
 line-range reads, avoid scratch/debug files, inspect `git_diff`, and recover from
-truncated observations or permission denials before finishing. Both interfaces use
-the same deterministic three-action history window while `messages.jsonl` preserves
-the complete trajectory; this prevents accumulated observations from exceeding the
-frozen 16K model context. V5 changes the Restricted Python fictional demonstration
+truncated observations or permission denials before finishing. V5 changes the
+Restricted Python fictional demonstration
 to one capability call per turn and adds the same compact turn/edit progress reminder
-to both interfaces so dropped observations do not cause an investigation restart.
-Model errors record both exception type and message.
+to both interfaces. V6 expands the shared deterministic history window from three to
+twelve action/observation pairs after an 80-turn debug run showed both interfaces
+repeating the same four focused reads without editing. `messages.jsonl` still preserves
+the complete trajectory, and the runtime continues to enforce the frozen 16K context
+limit before every generation. Model errors record both exception type and message.
 
 Snapshot SHA-256 verification is persisted beside the immutable ModelScope snapshot.
 Later processes reuse it when the revision and every hashed file's path, size, and

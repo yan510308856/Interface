@@ -101,7 +101,7 @@ class RunnerTests(unittest.TestCase):
         )
         for config in configs:
             self.assertEqual(
-                "r6p-interface-scaffold-v5",
+                "r6p-interface-scaffold-v6",
                 config["interface_scaffold"]["schema_version"],
             )
             self.assertEqual(
@@ -116,7 +116,7 @@ class RunnerTests(unittest.TestCase):
                 "qwen-turn-progress-v1",
                 config["interface_scaffold"]["turn_progress"],
             )
-            self.assertEqual(3, config["interface_scaffold"]["retained_action_turns"])
+            self.assertEqual(12, config["interface_scaffold"]["retained_action_turns"])
         self.assertEqual(512, configs[0]["action_generation"]["max_output_tokens"])
         atomic_messages = runner._prompt(configs[0])
         python_messages = runner._prompt(configs[1])
@@ -214,14 +214,15 @@ class RunnerTests(unittest.TestCase):
     def test_model_history_is_bounded_without_losing_the_complete_audit_log(self):
         active = [{"role": "system", "content": "contract"}]
         complete = list(active)
-        for turn in range(5):
+        turn_count = runner.RETAINED_ACTION_TURNS + 2
+        for turn in range(turn_count):
             runner._append_model_history(
                 active, complete, 1, f"action-{turn}", f"observation-{turn}"
             )
 
         self.assertEqual(1 + 2 * runner.RETAINED_ACTION_TURNS, len(active))
         self.assertEqual("action-2", active[1]["content"])
-        self.assertEqual(11, len(complete))
+        self.assertEqual(1 + 2 * turn_count, len(complete))
         self.assertEqual("action-0", complete[1]["content"])
 
     def test_model_error_records_the_exception_detail(self):

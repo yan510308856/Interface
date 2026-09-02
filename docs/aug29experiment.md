@@ -839,6 +839,15 @@ capability call，并向两个接口的每轮 observation 添加同构、紧凑�
 最近 3 轮窗口淘汰旧 observation 后重新开始调查。它不增加 context window，不改变 action、operation、
 token、time 或 retry budget，也不改变 task、permission、backend、oracle 或 raw-output 判定。
 
+`debug-astropy-patch-first-003` 将两个接口各放宽到 80 turns 后仍得到空 patch：Atomic 为 3 次
+`search_text` 与 77 次 `read_file`，Restricted Python 为 1 次 `list_dir`、78 次 `read_file` 和
+1 次 invalid；两个接口都在相同的四个 `separable.py` range 上循环且从未发出 edit。该结果排除
+turn/token/cost budget 过小作为主要解释，并表明最近 3 轮窗口无法同时保留完整的四段代码证据。
+v6 因此把两个接口共享的 retained action/observation window 从 3 增至 12；完整 trajectory 仍写入
+`messages.jsonl`，每次 generation 前仍由 runtime 强制检查冻结的 16K context limit。该变更不改变
+task、permission、backend、oracle、action parser 或两个接口之间的预算对称性，仍仅属于 development
+calibration。
+
 ## 11. R6 — 真实 Qwen Clean smoke
 
 本节是正式 R6，目前未解锁。R6-P 的任何运行均不能计入本节 gate。

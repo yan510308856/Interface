@@ -33,11 +33,11 @@ INTERFACE_ASSISTANT_PREFILLS = {
     "atomic": "{",
     "restricted_python": "result = ",
 }
-INTERFACE_SCAFFOLD_VERSION = "r6p-interface-scaffold-v5"
+INTERFACE_SCAFFOLD_VERSION = "r6p-interface-scaffold-v6"
 FORMAT_DEMONSTRATION_ID = "qwen-action-only-demo-v3"
 INVALID_FEEDBACK_ID = "qwen-invalid-action-feedback-v2"
 TURN_PROGRESS_ID = "qwen-turn-progress-v1"
-RETAINED_ACTION_TURNS = 3
+RETAINED_ACTION_TURNS = 12
 
 
 class RunnerConfigError(ValueError):
