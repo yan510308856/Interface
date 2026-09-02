@@ -70,6 +70,11 @@ modification time are unchanged. Set `R1_FORCE_SNAPSHOT_REHASH=1` only when an
 explicit full re-verification is required. GPU model loading still occurs once per
 Python process because GPU memory cannot survive a Colab/runtime restart.
 
+For paired Astropy runs, the source checkout may live on Drive. The runner skips
+the expensive source-worktree `git status` scan and instead clones the frozen commit
+into local scratch, then validates that local destination. Dirty files in the source
+checkout are therefore excluded from the episode.
+
 Run both calibrated Clean episodes in one Colab process so the frozen Qwen is loaded
 only once:
 

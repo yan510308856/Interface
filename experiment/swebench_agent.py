@@ -99,7 +99,6 @@ def materialize_pristine_workspace(
         raise AgentTaskError("workspace source is not a Git worktree")
     base_commit = manifest["task"]["base_commit"]
     _git(["git", "cat-file", "-e", f"{base_commit}^{{commit}}"], cwd=source)
-    source_dirty = bool(_git(["git", "status", "--porcelain"], cwd=source))
     destination.parent.mkdir(parents=True, exist_ok=True)
     _git([
         "git", "clone", "--no-hardlinks", "--no-checkout",
@@ -109,7 +108,10 @@ def materialize_pristine_workspace(
     identity = validate_workspace(destination, manifest)
     identity.update({
         "source_workspace": str(source),
-        "source_worktree_dirty": source_dirty,
+        # A Drive-backed source makes `git status` an expensive full-tree scan.
+        # The destination is checked at the frozen commit below, which is the
+        # only state the episode consumes.
+        "source_worktree_dirty": "not_checked_destination_is_authoritative",
         "materialization": "local_git_clone_at_frozen_commit",
     })
     return identity

@@ -79,7 +79,7 @@ class SwebenchAgentTests(unittest.TestCase):
                 source, destination, manifest
             )
 
-            self.assertTrue(identity["source_worktree_dirty"])
+            self.assertEqual("not_checked_destination_is_authoritative", identity["source_worktree_dirty"])
             self.assertEqual(head, identity["base_commit"])
             self.assertFalse((destination / "dirty.txt").exists())
             self.assertTrue(dirty.exists())
