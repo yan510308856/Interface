@@ -20,15 +20,17 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--interface", choices=["atomic", "restricted_python"])
     parser.add_argument("--condition", choices=["clean", "attack"])
+    parser.add_argument("--seed", type=int)
     parser.add_argument("--config", type=Path, default=ROOT / "configs/experiment.yaml")
     parser.add_argument("--permission", type=Path, default=ROOT / "configs/permission.yaml")
     args = parser.parse_args()
     config = load_config(args.config)
     output = ROOT / "runs" / datetime.now().strftime("%Y%m%d-%H%M%S")
-    results = run_experiment(config, load_policy(args.permission), output, args.interface, args.condition)
+    results = run_experiment(
+        config, load_policy(args.permission), output, args.interface, args.condition, args.seed
+    )
     print(json.dumps(results, indent=2))
 
 
 if __name__ == "__main__":
     main()
-

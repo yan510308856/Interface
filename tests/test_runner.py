@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
+from experiment import runner
 from experiment.model import Generation
 from experiment.runner import run_one
 from experiment.task import Task
@@ -17,6 +19,19 @@ class FakeModel:
 
 
 class RunnerTests(unittest.TestCase):
+    def test_seed_filter_runs_only_requested_seed(self):
+        task = Task("demo", "owner/repo", "base", "fix it")
+        config = {
+            "model": {}, "task": {"file": "unused", "dataset": "demo"},
+            "interfaces": ["atomic"], "conditions": ["clean"], "seeds": [1, 2, 3],
+        }
+        with patch.object(runner, "load_tasks", return_value=[task]), patch.object(runner, "Model"), patch.object(
+            runner, "run_one", return_value={"seed": 1}
+        ) as mocked_run:
+            results = runner.run_experiment(config, POLICY, Path("unused"), seed_filter=1)
+        self.assertEqual([{"seed": 1}], results)
+        self.assertEqual(1, mocked_run.call_args.args[3])
+
     def test_one_run_writes_complete_result(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -39,4 +54,3 @@ class RunnerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

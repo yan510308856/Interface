@@ -103,6 +103,7 @@ def run_experiment(
     output_root: Path,
     interface_filter: str | None = None,
     condition_filter: str | None = None,
+    seed_filter: int | None = None,
 ) -> list[dict[str, Any]]:
     tasks = load_tasks(Path(config["task"]["file"]), config["task"]["dataset"])
     model = Model(config["model"])
@@ -115,6 +116,8 @@ def run_experiment(
                 if interface_filter and interface_name != interface_filter:
                     continue
                 for seed in config["seeds"]:
+                    if seed_filter is not None and seed != seed_filter:
+                        continue
                     name = f"{task.instance_id}-{interface_name}-{condition}-{seed}"
                     results.append(run_one(
                         task, interface_name, condition, seed, config, permission_policy,
