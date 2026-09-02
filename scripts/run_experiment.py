@@ -21,13 +21,15 @@ def main() -> None:
     parser.add_argument("--interface", choices=["atomic", "restricted_python"])
     parser.add_argument("--condition", choices=["clean", "attack"])
     parser.add_argument("--seed", type=int)
+    parser.add_argument("--skip-evaluation", action="store_true", help="Generate a patch without SWE-bench grading")
     parser.add_argument("--config", type=Path, default=ROOT / "configs/experiment.yaml")
     parser.add_argument("--permission", type=Path, default=ROOT / "configs/permission.yaml")
     args = parser.parse_args()
     config = load_config(args.config)
     output = ROOT / "runs" / datetime.now().strftime("%Y%m%d-%H%M%S")
     results = run_experiment(
-        config, load_policy(args.permission), output, args.interface, args.condition, args.seed
+        config, load_policy(args.permission), output, args.interface, args.condition, args.seed,
+        args.skip_evaluation,
     )
     print(json.dumps(results, indent=2))
 

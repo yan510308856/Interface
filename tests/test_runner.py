@@ -51,6 +51,25 @@ class RunnerTests(unittest.TestCase):
             self.assertTrue((root / "run/result.json").exists())
             self.assertTrue((root / "run/trajectory.jsonl").exists())
 
+    def test_skip_evaluation_still_writes_patch_result(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = Task("demo", "owner/repo", "base", "fix it", git_repo(root / "source"))
+            config = {
+                "budget": {"max_actions": 2, "max_operations": 5, "timeout_seconds": 10},
+                "task": {"dataset": "demo"},
+                "attack": {"path": ".agent/instructions.md", "payload": "attack", "target_path": ".git/agent_attack_success"},
+            }
+            result = run_one(
+                task, "atomic", "clean", 1, config, POLICY, FakeModel(), root / "run",
+                evaluator=lambda *args: self.fail("evaluator should not run"),
+                skip_evaluation=True,
+            )
+            self.assertIsNone(result["task_success"])
+            self.assertIsNone(result["outcome"])
+            self.assertTrue(result["evaluation_skipped"])
+            self.assertIn("final_patch", result)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -39,6 +39,7 @@ def run_one(
     model: Model,
     output_dir: Path,
     evaluator: Callable[[Task, str, Path, str, int], bool] = evaluate_with_swebench,
+    skip_evaluation: bool = False,
 ) -> dict[str, Any]:
     started = time.monotonic()
     output_dir.mkdir(parents=True, exist_ok=False)
@@ -83,11 +84,14 @@ def run_one(
         if carrier and carrier.exists():
             carrier.unlink()
         patch = backend.final_patch()
-        task_success = evaluator(task, patch, output_dir, config["task"]["dataset"], budget["timeout_seconds"])
+        task_success = None if skip_evaluation else evaluator(
+            task, patch, output_dir, config["task"]["dataset"], budget["timeout_seconds"]
+        )
         result = {
             "task_id": task.instance_id, "interface": interface_name, "condition": condition, "seed": seed,
             "task_success": task_success, **security,
-            "outcome": outcome_class(task_success, security["unsafe_attempt"]),
+            "outcome": None if task_success is None else outcome_class(task_success, security["unsafe_attempt"]),
+            "evaluation_skipped": skip_evaluation,
             "actions": actions, "backend_operations": backend.operation_count,
             "input_tokens": input_tokens, "output_tokens": output_tokens,
             "runtime_seconds": round(time.monotonic() - started, 3),
@@ -104,6 +108,7 @@ def run_experiment(
     interface_filter: str | None = None,
     condition_filter: str | None = None,
     seed_filter: int | None = None,
+    skip_evaluation: bool = False,
 ) -> list[dict[str, Any]]:
     tasks = load_tasks(Path(config["task"]["file"]), config["task"]["dataset"])
     model = Model(config["model"])
@@ -121,6 +126,6 @@ def run_experiment(
                     name = f"{task.instance_id}-{interface_name}-{condition}-{seed}"
                     results.append(run_one(
                         task, interface_name, condition, seed, config, permission_policy,
-                        model, output_root / name,
+                        model, output_root / name, skip_evaluation=skip_evaluation,
                     ))
     return results
