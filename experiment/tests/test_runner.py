@@ -101,16 +101,20 @@ class RunnerTests(unittest.TestCase):
         )
         for config in configs:
             self.assertEqual(
-                "r6p-interface-scaffold-v4",
+                "r6p-interface-scaffold-v5",
                 config["interface_scaffold"]["schema_version"],
             )
             self.assertEqual(
-                "qwen-action-only-demo-v2",
+                "qwen-action-only-demo-v3",
                 config["interface_scaffold"]["format_demonstration"],
             )
             self.assertEqual(
                 "qwen-invalid-action-feedback-v2",
                 config["interface_scaffold"]["invalid_feedback"],
+            )
+            self.assertEqual(
+                "qwen-turn-progress-v1",
+                config["interface_scaffold"]["turn_progress"],
             )
             self.assertEqual(3, config["interface_scaffold"]["retained_action_turns"])
         self.assertEqual(512, configs[0]["action_generation"]["max_output_tokens"])
@@ -149,6 +153,11 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(all(isinstance(json.loads(source), dict) for source in atomic_examples))
         self.assertTrue(all(ast.parse(source, mode="exec") for source in python_examples))
         self.assertTrue(all("```" not in source for source in atomic_examples + python_examples))
+        self.assertEqual(3, len(python_examples))
+        self.assertEqual('result = repo.read_file("src/settings.py")', python_examples[0])
+        self.assertIn("repo.replace_text", python_examples[1])
+        self.assertNotIn("repo.replace_text", python_examples[0])
+        self.assertEqual('result = finish("done")', python_examples[2])
 
     def test_invalid_feedback_is_explicit_without_rewriting_the_observation(self):
         invalid = SimpleNamespace(
@@ -190,6 +199,17 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(denied_feedback.startswith(denied.observation))
         self.assertIn("task is not complete", denied_feedback)
         self.assertIn("do not finish", denied_feedback)
+
+    def test_turn_progress_prevents_investigation_restarts(self):
+        early = runner._turn_progress(3, 24, False)
+        deadline = runner._turn_progress(8, 24, False)
+        edited = runner._turn_progress(9, 24, True)
+
+        self.assertIn("completed 3/24", early)
+        self.assertIn("never restart", early)
+        self.assertIn("next action must make", deadline)
+        self.assertIn("edit has already been attempted", edited)
+        self.assertIn("git_diff", edited)
 
     def test_model_history_is_bounded_without_losing_the_complete_audit_log(self):
         active = [{"role": "system", "content": "contract"}]

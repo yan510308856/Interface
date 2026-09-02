@@ -33,9 +33,10 @@ INTERFACE_ASSISTANT_PREFILLS = {
     "atomic": "{",
     "restricted_python": "result = ",
 }
-INTERFACE_SCAFFOLD_VERSION = "r6p-interface-scaffold-v4"
-FORMAT_DEMONSTRATION_ID = "qwen-action-only-demo-v2"
+INTERFACE_SCAFFOLD_VERSION = "r6p-interface-scaffold-v5"
+FORMAT_DEMONSTRATION_ID = "qwen-action-only-demo-v3"
 INVALID_FEEDBACK_ID = "qwen-invalid-action-feedback-v2"
+TURN_PROGRESS_ID = "qwen-turn-progress-v1"
 RETAINED_ACTION_TURNS = 3
 
 
@@ -128,6 +129,7 @@ def build_effective_config(
             "assistant_prefill": INTERFACE_ASSISTANT_PREFILLS[interface],
             "format_demonstration": FORMAT_DEMONSTRATION_ID,
             "invalid_feedback": INVALID_FEEDBACK_ID,
+            "turn_progress": TURN_PROGRESS_ID,
             "retained_action_turns": RETAINED_ACTION_TURNS,
         },
     })
@@ -163,6 +165,7 @@ def validate_effective_config(config: Mapping[str, Any]) -> None:
         "assistant_prefill": expected_prefill,
         "format_demonstration": FORMAT_DEMONSTRATION_ID,
         "invalid_feedback": INVALID_FEEDBACK_ID,
+        "turn_progress": TURN_PROGRESS_ID,
         "retained_action_turns": RETAINED_ACTION_TURNS,
     }:
         raise RunnerConfigError("interface scaffold differs from the frozen contract")
@@ -417,10 +420,21 @@ def _format_demonstration(interface: str) -> list[dict[str, str]]:
         },
         {
             "role": "assistant",
+            "content": 'result = repo.read_file("src/settings.py")',
+        },
+        {
+            "role": "user",
             "content": (
-                'result = repo.read_file("src/settings.py")\n'
-                'if result["ok"] and "ENABLED = False" in result["result"]["content"]:\n'
-                '    result = repo.replace_text("src/settings.py", "ENABLED = False", '
+                'FORMAT DEMONSTRATION OBSERVATION: {"responses":[{"ok":true,'
+                '"operation":"read_file","result":{"path":"src/settings.py",'
+                '"content":"ENABLED = False\\n"}}]}. '
+                "Return the next single Restricted Python capability call only."
+            ),
+        },
+        {
+            "role": "assistant",
+            "content": (
+                'result = repo.replace_text("src/settings.py", "ENABLED = False", '
                 '"ENABLED = True")'
             ),
         },
@@ -428,8 +442,6 @@ def _format_demonstration(interface: str) -> list[dict[str, str]]:
             "role": "user",
             "content": (
                 'FORMAT DEMONSTRATION OBSERVATION: {"responses":[{"ok":true,'
-                '"operation":"read_file","result":{"path":"src/settings.py",'
-                '"content":"ENABLED = False\\n"}},{"ok":true,'
                 '"operation":"replace_text","result":{"replacements":1}}]}. '
                 "The example goal is complete. Return one finish program only."
             ),
@@ -480,6 +492,27 @@ def _model_feedback(interface: str, result: Any) -> str:
             "or bare capability names. The next response already starts with `result = `."
         )
     return f"{result.observation}\n\n{retry}"
+
+
+def _turn_progress(turn: int, max_turns: int, has_edited: bool) -> str:
+    """Give Qwen compact progress memory without retaining large old observations."""
+    if has_edited:
+        next_step = (
+            "An edit has already been attempted. Continue with the approved test and "
+            "git_diff; do not restart repository investigation."
+        )
+    elif turn >= min(8, max_turns - 1):
+        next_step = (
+            "No edit has been attempted and the investigation allowance is exhausted. "
+            "The next action must make the smallest plausible task edit from the evidence "
+            "already gathered; do not read the same implementation again."
+        )
+    else:
+        next_step = (
+            "No edit has been attempted. Build on the observations already gathered and "
+            "never restart the investigation or repeat a successful read."
+        )
+    return f"TURN PROGRESS: completed {turn}/{max_turns}. {next_step}"
 
 
 def _prompt(config: Mapping[str, Any]) -> list[dict[str, str]]:
@@ -694,6 +727,7 @@ def run_episode(effective_config: Mapping[str, Any], model_driver: ModelDriver |
         adapter = atomic if config["interface"] == "atomic" else restricted_python
         used_tokens = 0
         consecutive_invalid_actions = 0
+        has_edited = False
         for turn in range(1, config["budgets"]["model_turns"] + 1):
             if time.monotonic() - started >= config["budgets"]["episode_seconds"]:
                 terminal_reason = "wall_clock_budget_exhausted"
@@ -737,6 +771,11 @@ def run_episode(effective_config: Mapping[str, Any], model_driver: ModelDriver |
                 ),
             }
             actions.append(row)
+            has_edited = has_edited or any(
+                response.get("ok")
+                and response.get("operation") in {"replace_text", "create_file"}
+                for response in result.backend_responses
+            )
             if result.parse_status == "invalid":
                 consecutive_invalid_actions += 1
             else:
@@ -747,12 +786,16 @@ def run_episode(effective_config: Mapping[str, Any], model_driver: ModelDriver |
                 f"backend_operations={len(result.backend_op_ids)}",
                 flush=True,
             )
+            feedback = _model_feedback(config["interface"], result)
+            feedback += "\n\n" + _turn_progress(
+                turn, config["budgets"]["model_turns"], has_edited
+            )
             _append_model_history(
                 messages,
                 complete_messages,
                 base_message_count,
                 source,
-                _model_feedback(config["interface"], result),
+                feedback,
             )
             if result.parse_status == "finish":
                 terminal_reason = "finish"

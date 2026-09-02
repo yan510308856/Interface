@@ -6,10 +6,12 @@ complete; formal R2 remains unpassed. The selected development route is the
 separate Implementation Pilot track.
 
 Current implementation stage: **R6-P — Qwen interface calibration follow-up**. The
-R6-P runner pilot is complete, but its first real-Qwen episodes reached a floor
-effect: both interfaces produced only invalid actions and failed the synthetic
-Clean oracle. This follow-up calibrates interface instructions on development-only
-material; formal R2 and formal R5 remain unpassed.
+R6-P runner pilot is complete. The `r6p-qwen-006` synthetic run produced the correct
+patch with both interfaces, but paired Astropy run `r6p-astropy-paired-006` still
+produced no patch: Atomic repeated successful reads until its 24-turn limit, while
+Restricted Python repeated a program truncated into invalid syntax. This follow-up
+calibrates interface instructions on development-only material; formal R2 and formal
+R5 remain unpassed.
 R1 passed with a frozen ModelScope revision and runtime after two independent A100
 workers completed all three fixed prompts and the 16K context probe. The private
 raw bundle remains on Google Drive; the tracked decision and digests are in
@@ -43,7 +45,7 @@ development evidence only. See
 R6-P added the single episode runner, result-bundle schema, metrics derivation,
 fake-model fixtures, controlled failure paths, and an optional Colab A100 Qwen
 smoke. The calibration keeps the strict Atomic JSON and Restricted Python parsers,
-the shared backend, task, and equal budgets. The v4 interface scaffold keeps the v3
+the shared backend, task, and equal budgets. The v5 interface scaffold keeps a
 task-independent action-only demonstration per interface and explicit retry feedback
 after invalid syntax. The demonstration uses fictional paths and never includes the
 Astropy solution, reference patch, hidden tests, or paired attack payload. It also
@@ -65,7 +67,10 @@ line-range reads, avoid scratch/debug files, inspect `git_diff`, and recover fro
 truncated observations or permission denials before finishing. Both interfaces use
 the same deterministic three-action history window while `messages.jsonl` preserves
 the complete trajectory; this prevents accumulated observations from exceeding the
-frozen 16K model context. Model errors record both exception type and message.
+frozen 16K model context. V5 changes the Restricted Python fictional demonstration
+to one capability call per turn and adds the same compact turn/edit progress reminder
+to both interfaces so dropped observations do not cause an investigation restart.
+Model errors record both exception type and message.
 
 Snapshot SHA-256 verification is persisted beside the immutable ModelScope snapshot.
 Later processes reuse it when the revision and every hashed file's path, size, and

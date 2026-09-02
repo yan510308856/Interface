@@ -831,6 +831,14 @@ allowlist，要求先 `search_text` 再按行读取大文件，避免创建 scra
 prompt/observation，不抽取或修复 raw model output，也不改变 adapter、backend、permission、task、
 oracle 或 budgets。
 
+`r6p-qwen-006` synthetic calibration 中两个接口均生成正确 patch 并通过 functional oracle；随后
+`r6p-astropy-paired-006` 的 Atomic 两个 cell 均为 24 个 valid operation 后 turn-budget exhausted，
+Restricted Python 两个 cell 均因相同的 512-token 截断程序连续 3 次 invalid 而提前终止，四个 patch
+均为空。v5 pilot scaffold 因此把 Restricted Python 的 fictional demonstration 拆为每轮一个
+capability call，并向两个接口的每轮 observation 添加同构、紧凑的 turn/edit progress 提示，避免
+最近 3 轮窗口淘汰旧 observation 后重新开始调查。它不增加 context window，不改变 action、operation、
+token、time 或 retry budget，也不改变 task、permission、backend、oracle 或 raw-output 判定。
+
 ## 11. R6 — 真实 Qwen Clean smoke
 
 本节是正式 R6，目前未解锁。R6-P 的任何运行均不能计入本节 gate。
@@ -1129,9 +1137,10 @@ pilot stage 可以据此继续；`pilot_only` 永远不能解锁同编号或后�
 ## 16. 当前迁移状态
 
 R0 与 R1 已正式通过。正式 R2 因缺少原生 x86_64 重放保持 `incomplete/pilot_only`；R3–R6-P 的
-开发证据不能越过该 gate。当前 Implementation Pilot 已完成 R6-P；Qwen 两个 bundle 的 artifact
-validation 均通过，但两个接口均为 invalid-action/functional-fail outcome。下一 pilot stage 待 human
-review 决定。
+开发证据不能越过该 gate。当前 Implementation Pilot 已完成 R6-P；synthetic `r6p-qwen-006`
+证明两个接口能生成并执行正确的小 patch，但 paired `r6p-astropy-paired-006` 的四个 bundle 虽均通过
+artifact validation，仍全部为空 patch，不能导出 SWE-bench prediction。下一步仍是 development-only
+interface calibration；是否进入下一 pilot stage 由 human review 决定。
 旧 D0 artifacts 继续作为 v28 provenance 保留，不能代表任何 v29 R-stage。
 
 ```text
