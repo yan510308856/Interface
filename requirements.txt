@@ -1,5 +1,1 @@
-# R1 user-space dependencies. Colab-provided torch is recorded, not replaced.
-modelscope==1.39.1
-modelscope-hub==0.2.0
-transformers==5.16.1
-accelerate==1.14.0
+swebench @ git+https://github.com/SWE-bench/SWE-bench.git@7a21e05772954cc81471ae19d56f436cecf43c54
