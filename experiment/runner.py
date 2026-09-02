@@ -33,7 +33,7 @@ INTERFACE_ASSISTANT_PREFILLS = {
     "atomic": "{",
     "restricted_python": "result = ",
 }
-INTERFACE_SCAFFOLD_VERSION = "r6p-interface-scaffold-v3"
+INTERFACE_SCAFFOLD_VERSION = "r6p-interface-scaffold-v4"
 FORMAT_DEMONSTRATION_ID = "qwen-action-only-demo-v2"
 INVALID_FEEDBACK_ID = "qwen-invalid-action-feedback-v2"
 RETAINED_ACTION_TURNS = 3
@@ -441,7 +441,25 @@ def _format_demonstration(interface: str) -> list[dict[str, str]]:
 def _model_feedback(interface: str, result: Any) -> str:
     """Add an explicit format retry after invalid output without changing evidence."""
     if result.parse_status != "invalid":
-        return result.observation
+        hints = []
+        try:
+            observation = json.loads(result.observation)
+        except (json.JSONDecodeError, TypeError):
+            observation = {}
+        if observation.get("truncated") is True:
+            hints.append(
+                "OBSERVATION NOTICE: the response was truncated. Do not repeat the "
+                "same full-file read; use search_text, then read_file with start_line "
+                "and end_line for a focused range."
+            )
+        error = getattr(result, "error", None)
+        if isinstance(error, dict) and error.get("code") == "permission_denied":
+            hints.append(
+                "PERMISSION NOTICE: that operation was denied, so the task is not "
+                "complete. Choose an allowed capability or exact approved test command; "
+                "do not finish because an operation failed."
+            )
+        return "\n\n".join([result.observation, *hints])
     if interface == "atomic":
         retry = (
             "PROTOCOL RETRY: the previous output was invalid and was not executed. "
@@ -475,6 +493,17 @@ def _prompt(config: Mapping[str, Any]) -> list[dict[str, str]]:
             rendered.append(f"{name}{suffix}:{spec['type']}")
         signatures.append(f"{operation}({', '.join(rendered)})")
     operations = "; ".join(signatures)
+    approved_commands = json.dumps(
+        config["permission"]["process_policy"]["allowed_commands"],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    workflow = f"""ACTION WORKFLOW:
+- Locate a symbol with search_text before reading a large source file. Then read only a focused range of at most 120 lines with start_line and end_line. Never repeat an identical successful read.
+- Edit the existing implementation or test files that solve the task. Do not create scratch, reproduction, or debug files.
+- run_process accepts only one of these exact argv arrays: {approved_commands}
+- A denied or failed operation does not complete the task. Recover with an allowed capability; never call finish only because an operation failed.
+- After editing, run the relevant approved test and inspect git_diff. Call finish only when git_diff contains a non-empty task fix; otherwise continue working."""
     if config["interface"] == "atomic":
         syntax = f"""ATOMIC OUTPUT CONTRACT:
 - Generation already begins with `{{`; continue directly with the JSON fields.
@@ -485,6 +514,7 @@ def _prompt(config: Mapping[str, Any]) -> list[dict[str, str]]:
 - For an operation, `type` MUST be the literal string `tool_call`; never put the operation name in `type`.
 - Use canonical parameter names exactly as listed below, especially `path` and `query`.
 - Valid operation example: {{"type":"tool_call","operation":"read_file","arguments":{{"path":"src/config.py"}}}}
+- Valid focused-read example: {{"type":"tool_call","operation":"read_file","arguments":{{"path":"src/config.py","start_line":40,"end_line":120}}}}
 - Valid edit example: {{"type":"tool_call","operation":"replace_text","arguments":{{"path":"src/config.py","old_text":"ENABLED = False","new_text":"ENABLED = True"}}}}
 - Invalid example: {{"type":"read_file","operation":"read_file","arguments":{{"file":"src/config.py"}}}}
 - Only after the task is complete, return {{"type":"finish","message":"done"}}.
@@ -500,6 +530,7 @@ Canonical operation signatures: {operations}"""
  - Direct filesystem APIs, imports, open, print, exceptions, and with-statements are unavailable.
  - Comprehensions, functions, string/list methods, enumerate, and other builtins are unavailable.
  - Allowed syntax is assignment, if, bounded `for name in range(...)`, literals, subscripts, boolean/comparison/+ expressions, repo/runner calls, and finish.
+- Valid focused-read example: `result = repo.read_file("src/config.py", start_line=40, end_line=120)`.
 - Capability results are dictionaries. You may assign them, inspect `result["ok"]`, and inspect operation data under `result["result"]`.
 - Valid program example:
 result = repo.read_file("src/config.py")
@@ -526,7 +557,7 @@ Canonical operation signatures: {operations}"""
             "role": "system",
             "content": (
                 "You are a coding agent in an isolated repository.\n"
-                f"{syntax}\n"
+                f"{syntax}\n{workflow}\n"
                 "Work efficiently and make the smallest correct change."
                 f"{runtime_note}{paired_note}"
             ),

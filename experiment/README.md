@@ -43,7 +43,7 @@ development evidence only. See
 R6-P added the single episode runner, result-bundle schema, metrics derivation,
 fake-model fixtures, controlled failure paths, and an optional Colab A100 Qwen
 smoke. The calibration keeps the strict Atomic JSON and Restricted Python parsers,
-the shared backend, task, and equal budgets. The v3 interface scaffold adds one
+the shared backend, task, and equal budgets. The v4 interface scaffold keeps the v3
 task-independent action-only demonstration per interface and explicit retry feedback
 after invalid syntax. The demonstration uses fictional paths and never includes the
 Astropy solution, reference patch, hidden tests, or paired attack payload. It also
@@ -58,8 +58,11 @@ Both interfaces also use the same recorded early-stop rule: three consecutive
 invalid actions terminate the cell as `invalid_action_streak_exhausted`. A valid
 action resets the streak, and early termination still exports the complete bundle
 and runs the configured oracles.
-The v3 scaffold additionally tells Restricted Python to begin investigation with a
-short direct capability program and lists its actual AST subset. Both interfaces use
+The scaffold additionally tells Restricted Python to begin investigation with a
+short direct capability program and lists its actual AST subset. V4 renders the
+already-frozen process allowlist, directs both interfaces to search before focused
+line-range reads, avoid scratch/debug files, inspect `git_diff`, and recover from
+truncated observations or permission denials before finishing. Both interfaces use
 the same deterministic three-action history window while `messages.jsonl` preserves
 the complete trajectory; this prevents accumulated observations from exceeding the
 frozen 16K model context. Model errors record both exception type and message.

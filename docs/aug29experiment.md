@@ -824,6 +824,13 @@ direct capability program；Atomic JSON 字符串必须转义物理换行。为�
 `messages.jsonl` 继续保存完整轨迹。该窗口是 shared scaffold policy，不改变 adapter、backend、
 permission、task、oracle 或 raw-output 判定。
 
+v4 pilot scaffold 针对 paired Astropy development trajectory 中已经观察到的重复整文件读取、
+range 参数位置错误、非 allowlist process 命令和 denial 后提前 finish：它渲染既有 process
+allowlist，要求先 `search_text` 再按行读取大文件，避免创建 scratch/debug 文件，并在 finish 前检查
+`git_diff`。截断 observation 与 permission denial 会收到显式下一步提示。该变更仍只校准
+prompt/observation，不抽取或修复 raw model output，也不改变 adapter、backend、permission、task、
+oracle 或 budgets。
+
 ## 11. R6 — 真实 Qwen Clean smoke
 
 本节是正式 R6，目前未解锁。R6-P 的任何运行均不能计入本节 gate。

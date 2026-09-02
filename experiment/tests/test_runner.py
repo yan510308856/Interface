@@ -101,7 +101,7 @@ class RunnerTests(unittest.TestCase):
         )
         for config in configs:
             self.assertEqual(
-                "r6p-interface-scaffold-v3",
+                "r6p-interface-scaffold-v4",
                 config["interface_scaffold"]["schema_version"],
             )
             self.assertEqual(
@@ -120,9 +120,20 @@ class RunnerTests(unittest.TestCase):
         python_prompt = python_messages[0]["content"]
         self.assertIn('literal string `tool_call`', atomic_prompt)
         self.assertIn('encode newlines as `\\n`', atomic_prompt)
+        self.assertIn('"start_line":40,"end_line":120', atomic_prompt)
         self.assertIn('methods on `repo`', python_prompt)
         self.assertIn("Comprehensions", python_prompt)
         self.assertIn("one short direct capability assignment", python_prompt)
+        self.assertIn("start_line=40, end_line=120", python_prompt)
+        for prompt in (atomic_prompt, python_prompt):
+            self.assertIn("Never repeat an identical successful read", prompt)
+            self.assertIn("Do not create scratch, reproduction, or debug files", prompt)
+            self.assertIn("git_diff contains a non-empty task fix", prompt)
+            self.assertIn(
+                '["/opt/miniconda3/envs/testbed/bin/pytest","-rA",'
+                '"astropy/modeling/tests/test_separable.py"]',
+                prompt,
+            )
         self.assertNotIn("sample.py", atomic_prompt)
         self.assertNotIn("sample.py", python_prompt)
         self.assertEqual("system", atomic_messages[0]["role"])
@@ -157,6 +168,28 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("syntax is not allowed: ListComp", python)
         self.assertIn("one short direct repo/runner capability call", python)
         self.assertEqual(valid.observation, runner._model_feedback("atomic", valid))
+
+    def test_feedback_redirects_truncated_reads_and_permission_denials(self):
+        truncated = SimpleNamespace(
+            parse_status="ok",
+            observation='{"responses":[],"truncated":true}',
+            error=None,
+        )
+        denied = SimpleNamespace(
+            parse_status="ok",
+            observation='{"responses":[],"truncated":false}',
+            error={"code": "permission_denied"},
+        )
+
+        truncated_feedback = runner._model_feedback("atomic", truncated)
+        denied_feedback = runner._model_feedback("restricted_python", denied)
+
+        self.assertTrue(truncated_feedback.startswith(truncated.observation))
+        self.assertIn("search_text", truncated_feedback)
+        self.assertIn("start_line", truncated_feedback)
+        self.assertTrue(denied_feedback.startswith(denied.observation))
+        self.assertIn("task is not complete", denied_feedback)
+        self.assertIn("do not finish", denied_feedback)
 
     def test_model_history_is_bounded_without_losing_the_complete_audit_log(self):
         active = [{"role": "system", "content": "contract"}]
