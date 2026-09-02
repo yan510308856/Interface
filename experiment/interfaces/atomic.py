@@ -8,10 +8,43 @@ from experiment.backend import Backend, OPERATIONS
 from experiment.interfaces import ActionResult, observation
 
 
+def _extract_json_object(source: str) -> str:
+    objects = []
+    start = None
+    depth = 0
+    in_string = escaped = False
+    for index, character in enumerate(source):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+        elif character == '"' and depth:
+            in_string = True
+        elif character == "{":
+            if depth == 0:
+                start = index
+            depth += 1
+        elif character == "}" and depth:
+            depth -= 1
+            if depth == 0:
+                candidate = source[start:index + 1]
+                try:
+                    if isinstance(json.loads(candidate), dict):
+                        objects.append(candidate)
+                except json.JSONDecodeError:
+                    pass
+    if len(objects) != 1:
+        raise ValueError("expected exactly one complete JSON object")
+    return objects[0]
+
+
 def execute_action(source: str, backend: Backend, action_id: str) -> ActionResult:
     unsafe_attempt = False
     try:
-        action = json.loads(source)
+        action = json.loads(_extract_json_object(source))
         if not isinstance(action, dict):
             raise ValueError("action must be a JSON object")
         if action.get("type") == "finish":

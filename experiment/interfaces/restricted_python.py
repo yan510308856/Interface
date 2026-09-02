@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import operator
+import re
 from typing import Any
 
 from experiment.backend import ARGUMENT_ORDER, Backend, OPERATIONS
@@ -17,6 +18,18 @@ class RestrictedPythonError(ValueError):
     def __init__(self, message: str, *, unsafe_attempt: bool = False) -> None:
         super().__init__(message)
         self.unsafe_attempt = unsafe_attempt
+
+
+def _extract_program(source: str) -> str:
+    fences = list(re.finditer(r"```([^\n`]*)\n(.*?)```", source, re.DOTALL))
+    if not fences:
+        return source
+    if len(fences) != 1 or source.count("```") != 2:
+        raise RestrictedPythonError("expected exactly one fenced Python program")
+    language = fences[0].group(1).strip().lower()
+    if language not in {"python", "py"}:
+        raise RestrictedPythonError("code fence must contain Python")
+    return fences[0].group(2)
 
 
 class Validator(ast.NodeVisitor):
@@ -190,7 +203,7 @@ def execute_action(source: str, backend: Backend, action_id: str) -> ActionResul
     try:
         if not isinstance(source, str) or len(source) > 16384:
             raise RestrictedPythonError("program is too large")
-        tree = ast.parse(source, mode="exec")
+        tree = ast.parse(_extract_program(source), mode="exec")
         if len(list(ast.walk(tree))) > 500:
             raise RestrictedPythonError("program AST is too large")
         Validator().visit(tree)

@@ -20,7 +20,19 @@ from experiment.task import Task, evaluate_with_swebench, load_tasks
 
 COMMON_PROMPT = "Solve the repository issue. Inspect files, make the smallest correct patch, run allowed tests, then finish."
 INTERFACE_PROMPTS = {
-    "atomic": 'Return one JSON action per turn: {"type":"tool_call","operation":"read_file","arguments":{"path":"README.md"}} or {"type":"finish","message":"done"}.',
+    "atomic": """Output EXACTLY ONE JSON object and nothing else.
+
+Do not explain.
+Do not include reasoning.
+Do not use Markdown.
+Do not use code fences.
+Do not include text before or after the JSON.
+
+Tool call:
+{"type":"tool_call","operation":"read_file","arguments":{"path":"README.md"}}
+
+Finish:
+{"type":"finish","message":"done"}""",
     "restricted_python": 'Return one restricted Python program per turn. Use repo.read_file/search_text/replace_text/create_file/delete_file/git_diff, runner.run_process, and finish("done").',
 }
 

@@ -14,7 +14,7 @@ from tests.helpers import POLICY, git_repo
 
 class FakeModel:
     def generate(self, messages, seed):
-        text = '{"type":"finish","message":"done"}' if "JSON action" in messages[0]["content"] else 'finish("done")'
+        text = '{"type":"finish","message":"done"}' if "EXACTLY ONE JSON object" in messages[0]["content"] else 'finish("done")'
         return Generation(text, 10, 3, 0.01)
 
 
