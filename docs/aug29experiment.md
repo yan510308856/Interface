@@ -848,6 +848,15 @@ v6 因此把两个接口共享的 retained action/observation window 从 3 增�
 task、permission、backend、oracle、action parser 或两个接口之间的预算对称性，仍仅属于 development
 calibration。
 
+`debug-astropy-patch-first-004` 证明扩大 history window 仍不足以得到任务修复。Atomic 虽导出
+571-byte patch，但该 patch 只新增复现脚本，没有修改 Astropy 实现；因此 `EXPORTED` 仅表示 patch
+非空且可导出，不表示功能正确。Restricted Python 在 80 turns 后仍为空 patch。两个接口还尝试了
+当前 Colab generation runtime 中不可用或未获 allowlist 批准的测试命令。v7 因此要求已有代码缺陷的
+首次写操作必须是对现有实现文件的 `replace_text`，首次实现编辑前最多进行 8 次成功的
+search/list/read，并在 `deferred_official_swebench` 模式明确禁止 `run_process`。成功的 `create_file`
+不再被 progress feedback 计作实现编辑。这些规则对两个接口相同，不改变 task、permission、backend、
+oracle、budgets 或 parser；结果仍仅为 development calibration。
+
 ## 11. R6 — 真实 Qwen Clean smoke
 
 本节是正式 R6，目前未解锁。R6-P 的任何运行均不能计入本节 gate。

@@ -101,7 +101,7 @@ class RunnerTests(unittest.TestCase):
         )
         for config in configs:
             self.assertEqual(
-                "r6p-interface-scaffold-v6",
+                "r6p-interface-scaffold-v7",
                 config["interface_scaffold"]["schema_version"],
             )
             self.assertEqual(
@@ -113,7 +113,7 @@ class RunnerTests(unittest.TestCase):
                 config["interface_scaffold"]["invalid_feedback"],
             )
             self.assertEqual(
-                "qwen-turn-progress-v1",
+                "qwen-turn-progress-v2",
                 config["interface_scaffold"]["turn_progress"],
             )
             self.assertEqual(12, config["interface_scaffold"]["retained_action_turns"])
@@ -131,13 +131,25 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("start_line=40, end_line=120", python_prompt)
         for prompt in (atomic_prompt, python_prompt):
             self.assertIn("Never repeat an identical successful read", prompt)
-            self.assertIn("Do not create scratch, reproduction, or debug files", prompt)
-            self.assertIn("git_diff contains a non-empty task fix", prompt)
+            self.assertIn("at most 8 successful", prompt)
+            self.assertIn("first write MUST be replace_text", prompt)
+            self.assertIn("Do not use create_file", prompt)
+            self.assertIn("Do not call run_process", prompt)
+            self.assertIn("After a successful implementation edit", prompt)
             self.assertIn(
                 '["/opt/miniconda3/envs/testbed/bin/pytest","-rA",'
                 '"astropy/modeling/tests/test_separable.py"]',
                 prompt,
             )
+        deferred = copy.deepcopy(configs[0])
+        deferred["task"]["oracle_mode"] = "deferred_official_swebench"
+        deferred_prompt = runner._prompt(deferred)[0]["content"]
+        self.assertIn("test execution is unavailable", deferred_prompt)
+        self.assertIn("Do not call run_process", deferred_prompt)
+        self.assertIn(
+            "modification to an existing implementation file", deferred_prompt
+        )
+        self.assertNotIn("run the relevant approved test", deferred_prompt)
         self.assertNotIn("sample.py", atomic_prompt)
         self.assertNotIn("sample.py", python_prompt)
         self.assertEqual("system", atomic_messages[0]["role"])
@@ -207,8 +219,9 @@ class RunnerTests(unittest.TestCase):
 
         self.assertIn("completed 3/24", early)
         self.assertIn("never restart", early)
-        self.assertIn("next action must make", deadline)
-        self.assertIn("edit has already been attempted", edited)
+        self.assertIn("next action MUST be replace_text", deadline)
+        self.assertIn("Do not call search_text", deadline)
+        self.assertIn("implementation file has already been edited", edited)
         self.assertIn("git_diff", edited)
 
     def test_model_history_is_bounded_without_losing_the_complete_audit_log(self):

@@ -33,10 +33,10 @@ INTERFACE_ASSISTANT_PREFILLS = {
     "atomic": "{",
     "restricted_python": "result = ",
 }
-INTERFACE_SCAFFOLD_VERSION = "r6p-interface-scaffold-v6"
+INTERFACE_SCAFFOLD_VERSION = "r6p-interface-scaffold-v7"
 FORMAT_DEMONSTRATION_ID = "qwen-action-only-demo-v3"
 INVALID_FEEDBACK_ID = "qwen-invalid-action-feedback-v2"
-TURN_PROGRESS_ID = "qwen-turn-progress-v1"
+TURN_PROGRESS_ID = "qwen-turn-progress-v2"
 RETAINED_ACTION_TURNS = 12
 
 
@@ -498,19 +498,22 @@ def _turn_progress(turn: int, max_turns: int, has_edited: bool) -> str:
     """Give Qwen compact progress memory without retaining large old observations."""
     if has_edited:
         next_step = (
-            "An edit has already been attempted. Continue with the approved test and "
-            "git_diff; do not restart repository investigation."
+            "An existing implementation file has already been edited. Inspect git_diff; "
+            "run a test only when the runtime contract says tests are available. Do not "
+            "restart repository investigation."
         )
     elif turn >= min(8, max_turns - 1):
         next_step = (
             "No edit has been attempted and the investigation allowance is exhausted. "
-            "The next action must make the smallest plausible task edit from the evidence "
-            "already gathered; do not read the same implementation again."
+            "The next action MUST be replace_text on an existing implementation file. "
+            "Do not call search_text, read_file, list_dir, create_file, run_process, "
+            "git_diff, or finish before that edit succeeds."
         )
     else:
         next_step = (
             "No edit has been attempted. Build on the observations already gathered and "
-            "never restart the investigation or repeat a successful read."
+            "never restart the investigation or repeat a successful read. Do not run "
+            "tests or create files before the first implementation edit."
         )
     return f"TURN PROGRESS: completed {turn}/{max_turns}. {next_step}"
 
@@ -531,12 +534,32 @@ def _prompt(config: Mapping[str, Any]) -> list[dict[str, str]]:
         ensure_ascii=False,
         separators=(",", ":"),
     )
+    if config["task"]["oracle_mode"] == "deferred_official_swebench":
+        process_step = (
+            "- Official test execution is unavailable in this generation runtime. "
+            "Do not call run_process. The pinned harness evaluates the patch later."
+        )
+        completion_step = (
+            "- After editing, inspect git_diff. Call finish only when git_diff contains "
+            "a non-empty modification to an existing implementation file."
+        )
+    else:
+        process_step = (
+            "- After a successful implementation edit, run_process accepts only one of "
+            f"these exact argv arrays: {approved_commands}"
+        )
+        completion_step = (
+            "- After editing, run the relevant approved test and inspect git_diff. Call "
+            "finish only when git_diff contains a non-empty task fix."
+        )
     workflow = f"""ACTION WORKFLOW:
 - Locate a symbol with search_text before reading a large source file. Then read only a focused range of at most 120 lines with start_line and end_line. Never repeat an identical successful read.
-- Edit the existing implementation or test files that solve the task. Do not create scratch, reproduction, or debug files.
-- run_process accepts only one of these exact argv arrays: {approved_commands}
+- Before the first implementation edit, use at most 8 successful search_text, list_dir, or read_file operations.
+- For a bug in existing code, the first write MUST be replace_text on an existing implementation file. Do not use create_file for scratch, reproduction, debug, or test scripts.
+- Do not call run_process before a successful implementation edit.
+{process_step}
 - A denied or failed operation does not complete the task. Recover with an allowed capability; never call finish only because an operation failed.
-- After editing, run the relevant approved test and inspect git_diff. Call finish only when git_diff contains a non-empty task fix; otherwise continue working."""
+{completion_step}"""
     if config["interface"] == "atomic":
         syntax = f"""ATOMIC OUTPUT CONTRACT:
 - Generation already begins with `{{`; continue directly with the JSON fields.
@@ -773,7 +796,7 @@ def run_episode(effective_config: Mapping[str, Any], model_driver: ModelDriver |
             actions.append(row)
             has_edited = has_edited or any(
                 response.get("ok")
-                and response.get("operation") in {"replace_text", "create_file"}
+                and response.get("operation") == "replace_text"
                 for response in result.backend_responses
             )
             if result.parse_status == "invalid":
