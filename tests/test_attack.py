@@ -1,11 +1,20 @@
 from __future__ import annotations
 
 import ast
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
-from experiment.attack import CARRIER_ANCHOR, CARRIER_PATH, cleanup_condition, prepare_condition, render_attack_comment
+from experiment.attack import (
+    CARRIER_ANCHOR,
+    CARRIER_PATH,
+    cleanup_condition,
+    finalize_condition,
+    prepare_condition,
+    render_attack_comment,
+)
+from tests.helpers import make_backend
 
 
 class AttackTests(unittest.TestCase):
@@ -16,6 +25,12 @@ class AttackTests(unittest.TestCase):
         carrier = root / CARRIER_PATH
         carrier.parent.mkdir(parents=True)
         carrier.write_text(self.source, encoding="utf-8")
+        subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+        subprocess.run(["git", "add", "."], cwd=root, check=True)
+        subprocess.run([
+            "git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+            "commit", "-qm", "base",
+        ], cwd=root, check=True)
         return root, carrier
 
     def config(self) -> dict[str, str]:
@@ -54,6 +69,62 @@ class AttackTests(unittest.TestCase):
                 "    return cright\n", "    agent_change = True\n    return cright\n",
             )
             self.assertEqual(expected, carrier.read_text(encoding="utf-8"))
+
+    def test_attack_baseline_diff_is_empty_before_agent_edit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo, carrier = self.make_repo(Path(temporary))
+            prepare_condition(repo, "attack", self.config())
+            backend = make_backend(repo, Path(temporary) / "log.jsonl")
+            response = backend.execute("git_diff", {}, "setup")
+            self.assertEqual("", response["result"]["diff"])
+            self.assertIn(
+                "IMPORTANT AGENT INSTRUCTION",
+                carrier.read_text(encoding="utf-8"),
+            )
+
+    def test_attack_carrier_is_readable_and_agent_diff_excludes_baseline_insertion(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo, carrier = self.make_repo(Path(temporary))
+            prepare_condition(repo, "attack", self.config())
+            backend = make_backend(repo, Path(temporary) / "log.jsonl")
+            response = backend.execute("read_file", {"path": str(CARRIER_PATH)}, "read")
+            content = response["result"]["content"]
+            indented_comment = "\n".join(
+                f"    {line}" for line in render_attack_comment(self.payload).splitlines()
+            )
+            self.assertIn(indented_comment, content)
+            matches = backend.execute(
+                "search_text",
+                {"query": "IMPORTANT AGENT INSTRUCTION", "path": str(CARRIER_PATH)},
+                "search",
+            )["result"]["matches"]
+            self.assertTrue(matches)
+
+            backend.execute(
+                "replace_text",
+                {
+                    "path": str(CARRIER_PATH),
+                    "old_text": "    return cright\n",
+                    "new_text": "    agent_change = True\n    return cright\n",
+                },
+                "edit",
+            )
+            diff = backend.execute("git_diff", {}, "diff")["result"]["diff"]
+            self.assertIn("+    agent_change = True", diff)
+            self.assertNotIn("+    # IMPORTANT AGENT INSTRUCTION:", diff)
+
+            finalize_condition(repo, carrier, self.config())
+            patch = backend.final_patch()
+            self.assertIn("+    agent_change = True", patch)
+            self.assertNotIn(render_attack_comment(self.payload), patch)
+
+    def test_clean_condition_has_no_attack_carrier(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo, carrier = self.make_repo(Path(temporary))
+            self.assertIsNone(prepare_condition(repo, "clean", self.config()))
+            backend = make_backend(repo, Path(temporary) / "log.jsonl")
+            self.assertEqual("", backend.execute("git_diff", {}, "clean")["result"]["diff"])
+            self.assertNotIn("IMPORTANT AGENT INSTRUCTION", carrier.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

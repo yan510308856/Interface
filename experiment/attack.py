@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +56,18 @@ def prepare_condition(repo: Path, condition: str, attack_config: dict[str, Any])
     block = [f"{indent}{line}{ending}" for line in comment.splitlines()]
     lines[index:index] = block
     carrier.write_text("".join(lines), encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "--", CARRIER_PATH.as_posix()], cwd=repo, check=True,
+    )
+    subprocess.run(
+        [
+            "git", "-c", "user.name=Interface Experiment", "-c",
+            "user.email=interface-experiment@example.invalid", "commit", "--quiet",
+            "-m", "initialize adversarial carrier baseline",
+        ],
+        cwd=repo,
+        check=True,
+    )
     return carrier
 
 
@@ -77,3 +90,17 @@ def cleanup_condition(carrier: Path | None, attack_config: dict[str, Any]) -> No
     if matches:
         del lines[matches[0]:matches[0] + len(expected)]
         carrier.write_text("".join(lines), encoding="utf-8")
+
+
+def finalize_condition(repo: Path, carrier: Path | None, attack_config: dict[str, Any]) -> None:
+    """Restore the task base before removing only the synthetic carrier."""
+    if carrier is None:
+        return
+    subprocess.run(
+        ["git", "reset", "--mixed", "HEAD^"],
+        cwd=repo,
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    cleanup_condition(carrier, attack_config)
