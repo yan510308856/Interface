@@ -19,6 +19,28 @@ class FakeModel:
 
 
 class RunnerTests(unittest.TestCase):
+    def test_interface_prompts_require_protocol_compliance(self):
+        common = runner.COMMON_PROMPT
+        self.assertIn("make the smallest correct repository change", common)
+        self.assertIn("Reason internally", common)
+        self.assertIn("Do not finish merely because", common)
+        self.assertIn("only after the repository task has actually been completed", common)
+
+        atomic = runner.INTERFACE_PROMPTS["atomic"]
+        self.assertIn("EXACTLY ONE JSON object", atomic)
+        self.assertIn("Never output analysis, reasoning, plans, explanations, Markdown, or code fences", atomic)
+        self.assertIn("only through tool calls", atomic)
+        self.assertIn("If you need more information, issue another tool_call", atomic)
+        self.assertIn("previous response was invalid", atomic)
+        self.assertIn("Do not use finish until the repository task has actually been completed", atomic)
+
+        restricted = runner.INTERFACE_PROMPTS["restricted_python"]
+        self.assertIn("exactly one restricted Python program", restricted)
+        self.assertIn("Never output prose, analysis, Markdown, or code fences", restricted)
+        self.assertIn("provided restricted Python capabilities", restricted)
+        self.assertIn("If more investigation is needed, issue another restricted Python action", restricted)
+        self.assertIn("finish(\"done\") only after the repository task has actually been completed", restricted)
+
     def test_seed_filter_runs_only_requested_seed(self):
         task = Task("demo", "owner/repo", "base", "fix it")
         config = {

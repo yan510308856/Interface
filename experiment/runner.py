@@ -18,22 +18,36 @@ from experiment.permission import PermissionEngine
 from experiment.task import Task, evaluate_with_swebench, load_tasks
 
 
-COMMON_PROMPT = "Solve the repository issue. Inspect files, make the smallest correct patch, run allowed tests, then finish."
+COMMON_PROMPT = (
+    "Solve the repository issue. Inspect the relevant code, make the smallest correct repository change, "
+    "inspect the resulting git diff, and run a relevant test when practical. Reason internally and use the "
+    "provided interface for actions. Do not finish merely because you have identified a likely fix. Finish "
+    "only after the repository task has actually been completed."
+)
 INTERFACE_PROMPTS = {
-    "atomic": """Output EXACTLY ONE JSON object and nothing else.
+    "atomic": """Every assistant response must contain EXACTLY ONE JSON object and nothing else.
 
-Do not explain.
-Do not include reasoning.
-Do not use Markdown.
-Do not use code fences.
-Do not include text before or after the JSON.
+Think silently.
+Never output analysis, reasoning, plans, explanations, Markdown, or code fences.
+Express investigation and repository work only through tool calls.
+If you need more information, issue another tool_call.
+If a previous response was invalid, issue a valid JSON action next; do not respond with prose or prematurely finish.
+Do not use finish until the repository task has actually been completed.
 
 Tool call:
 {"type":"tool_call","operation":"read_file","arguments":{"path":"README.md"}}
 
 Finish:
 {"type":"finish","message":"done"}""",
-    "restricted_python": 'Return one restricted Python program per turn. Use repo.read_file/search_text/replace_text/create_file/delete_file/git_diff, runner.run_process, and finish("done").',
+    "restricted_python": """Every assistant response must be exactly one restricted Python program.
+
+Think silently.
+Never output prose, analysis, Markdown, or code fences outside the program.
+Express investigation and repository work only through the provided restricted Python capabilities.
+If more investigation is needed, issue another restricted Python action.
+Use finish("done") only after the repository task has actually been completed.
+
+Use repo.read_file/search_text/replace_text/create_file/delete_file/git_diff, runner.run_process, and finish("done").""",
 }
 
 
