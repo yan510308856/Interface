@@ -1,67 +1,86 @@
-"""Atomic JSON action adapter: one valid tool call, one backend attempt."""
+"""Atomic interface: one model action performs at most one backend operation."""
 
 from __future__ import annotations
 
 import json
-import time
-from experiment import backend
-from experiment.interfaces import ActionResult, format_observation
+from typing import Any
+
+from experiment.backend import Backend, OPERATIONS
+from experiment.interfaces import ActionResult, observation
 
 
-def _invalid(action_id: str, started: float, message: str) -> ActionResult:
-    error = {"code": "invalid_action", "message": message, "retryable": False}
-    return ActionResult(
-        action_id=action_id,
-        parse_status="invalid",
-        observation=format_observation([{"ok": False, "error": error}]),
-        error=error,
-        duration_ms=round((time.monotonic() - started) * 1000, 3),
-    )
-
-
-def execute_action(source: str, context: backend.BackendContext, action_id: str) -> ActionResult:
-    """Parse and execute one Atomic action without performing adapter-side I/O."""
-    started = time.monotonic()
-    try:
-        action = json.loads(source)
-    except (json.JSONDecodeError, TypeError) as exc:
-        return _invalid(action_id, started, f"action must be one JSON object: {exc}")
-    if not isinstance(action, dict):
-        return _invalid(action_id, started, "action must be a JSON object")
-
-    action_type = action.get("type")
-    if action_type == "finish":
-        if set(action) - {"type", "message"} or not isinstance(action.get("message", ""), str):
-            return _invalid(action_id, started, "invalid finish action")
-        observation = format_observation([{"ok": True, "type": "finish", "message": action.get("message", "")}])
-        return ActionResult(
-            action_id=action_id,
-            parse_status="finish",
-            observation=observation,
-            duration_ms=round((time.monotonic() - started) * 1000, 3),
-        )
-
-    if action_type != "tool_call" or set(action) != {"type", "operation", "arguments"}:
-        return _invalid(action_id, started, "tool_call requires only type, operation, and arguments")
-    if not isinstance(action["operation"], str) or not isinstance(action["arguments"], dict):
-        return _invalid(action_id, started, "operation must be a string and arguments must be an object")
-    if action["operation"] not in backend.load_schema()["operations"]:
-        return _invalid(action_id, started, "operation is not in the canonical schema")
-
-    context.action_id = action_id
-    request = {
-        "operation": action["operation"],
-        "arguments": action["arguments"],
-        "request_id": f"{action_id}:op1",
+def _tool(
+    name: str,
+    description: str,
+    properties: dict[str, Any],
+    required: list[str] | None = None,
+) -> dict[str, Any]:
+    parameters: dict[str, Any] = {
+        "type": "object", "properties": properties, "additionalProperties": False,
     }
-    response = backend.execute(request, context)
-    error = None if response["ok"] else response["error"]
-    return ActionResult(
-        action_id=action_id,
-        parse_status="ok",
-        backend_op_ids=[response["request_id"]],
-        observation=format_observation([response]),
-        error=error,
-        duration_ms=round((time.monotonic() - started) * 1000, 3),
-        backend_responses=[response],
-    )
+    if required:
+        parameters["required"] = required
+    return {
+        "type": "function",
+        "function": {"name": name, "description": description, "parameters": parameters},
+    }
+
+
+ATOMIC_TOOLS = [
+    _tool("read_file", "Read repository file lines.", {
+        "path": {"type": "string"},
+        "start_line": {"type": "integer"},
+        "end_line": {"type": "integer"},
+    }, ["path"]),
+    _tool("search_text", "Search repository text.", {
+        "query": {"type": "string"},
+        "path": {"type": "string"},
+        "glob": {"type": "string"},
+        "case_sensitive": {"type": "boolean"},
+    }, ["query"]),
+    _tool("replace_text", "Replace repository text.", {
+        "path": {"type": "string"},
+        "old_text": {"type": "string"},
+        "new_text": {"type": "string"},
+        "expected_replacements": {"type": "integer"},
+    }, ["path", "old_text", "new_text"]),
+    _tool("create_file", "Create a repository file.", {
+        "path": {"type": "string"},
+        "content": {"type": "string"},
+    }, ["path", "content"]),
+    _tool("delete_file", "Delete a repository file.", {
+        "path": {"type": "string"},
+    }, ["path"]),
+    _tool("run_process", "Run an allowed repository process.", {
+        "argv": {"type": "array", "items": {"type": "string"}},
+        "timeout_seconds": {"type": "integer"},
+    }, ["argv"]),
+    _tool("git_diff", "Read the repository diff.", {
+        "path": {"type": "string"},
+        "staged": {"type": "boolean"},
+    }),
+    _tool("finish", "Finish the repository task.", {"message": {"type": "string"}}),
+]
+
+
+def execute_action(tool_calls: list[dict[str, Any]], backend: Backend, action_id: str) -> ActionResult:
+    unsafe_attempt = False
+    try:
+        if not isinstance(tool_calls, list) or len(tool_calls) != 1:
+            raise ValueError("expected exactly one tool call")
+        function = tool_calls[0]["function"]
+        name = function["name"]
+        arguments = json.loads(function["arguments"])
+        if not isinstance(arguments, dict):
+            raise ValueError("arguments must be an object")
+        if name == "finish":
+            if set(arguments) - {"message"} or not isinstance(arguments.get("message", ""), str):
+                raise ValueError("invalid finish arguments")
+            return ActionResult("finish", observation([{"message": arguments.get("message", "")}]))
+        if name not in OPERATIONS:
+            unsafe_attempt = True
+            raise ValueError("operation is not available")
+        response = backend.execute(name, arguments, action_id)
+        return ActionResult("ok", observation([response]), [response])
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        return ActionResult("invalid", observation([{"error": str(exc)}]), unsafe_attempt=unsafe_attempt)

@@ -1,7 +1,0 @@
-diff --git a/.r2_baseline_probe b/.r2_baseline_probe
-new file mode 100644
-index 0000000000..e02725fe79
---- /dev/null
-+++ b/.r2_baseline_probe
-@@ -0,0 +1 @@
-+R2 inert baseline probe; this file does not modify source code or tests.

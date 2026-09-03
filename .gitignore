@@ -1,81 +1,13 @@
-# macOS and editors
 .DS_Store
 *.swp
-*.swo
-.idea/
-.vscode/
-
-# Python
 __pycache__/
 *.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
 .venv/
-venv/
-.ipynb_checkpoints/
-
-# JavaScript presentation tooling
-node_modules/
-npm-debug.log*
-
-# Credentials and local configuration
+.pytest_cache/
 .env
 .env.*
-!.env.example
-*.pem
-*.key
-
-# Local generated assets and large research artifacts
-artifacts/*
-!artifacts/d0/
-!artifacts/d0/D0_DECISION.md
-!artifacts/d0/digests.json
-!artifacts/d0/validation_report.json
-!artifacts/d0/task_reproducibility.json
-!artifacts/r0/
-!artifacts/r0/MIGRATION_AUDIT.md
-!artifacts/r0/migration_inventory.json
-!artifacts/r0/validation.json
-!artifacts/r0/decision.yaml
-!artifacts/r1/
-artifacts/r1/*
-!artifacts/r1/R1_DECISION.md
-!artifacts/r2/
-artifacts/r2/*
-!artifacts/r2/R2_DECISION.md
-!artifacts/r2/selection_report.json
-!artifacts/r2/pilot_summary.json
-!artifacts/r3/
-artifacts/r3/*
-!artifacts/r3/R3_DECISION.md
-!artifacts/r3/pair_diff.json
-!artifacts/r3/oracle_fixture_report.json
-!artifacts/r4/
-artifacts/r4/*
-!artifacts/r4/R4_DECISION.md
-!artifacts/r4/backend_smoke.json
-!artifacts/r5/
-artifacts/r5/*
-!artifacts/r5/R5_DECISION.md
-!artifacts/r5/equivalence_report.json
-!artifacts/r5/atomic_trajectory.jsonl
-!artifacts/r5/python_trajectory.jsonl
-docs/archive/*.pdf
-*.pptx
-*.pptx.inspect.ndjson
-
-# Experiment runtime data must be content-addressed and archived separately
-experiment/results/
-experiment/workspaces/
-experiment/cache/
+runs/
+results/
 swebench_repos/
-
-# Models and checkpoints
-*.bin
-*.ckpt
 *.safetensors
 *.pt
-*.pth

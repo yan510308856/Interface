@@ -1,0 +1,14 @@
+{
+  "allowed_operations": [
+    "read_file", "search_text", "replace_text", "create_file",
+    "delete_file", "run_process", "git_diff"
+  ],
+  "process": {
+    "allowed_prefixes": [
+      ["python", "-m", "pytest"],
+      ["python3", "-m", "pytest"],
+      ["pytest"]
+    ]
+  }
+}
+

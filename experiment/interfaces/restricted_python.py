@@ -1,28 +1,66 @@
-"""Small AST-interpreted Python action adapter with narrow backend capabilities."""
+"""AST-interpreted Python with access only to shared backend capabilities."""
 
 from __future__ import annotations
 
 import ast
 import operator
-import time
+import re
 from typing import Any
 
-from experiment import backend
-from experiment.interfaces import ActionResult, format_observation
+from experiment.backend import ARGUMENT_ORDER, Backend, OPERATIONS
+from experiment.interfaces import ActionResult, observation
+
+
+CAPABILITIES = {"repo": OPERATIONS - {"run_process"}, "runner": {"run_process"}}
+KNOWN_CAPABILITY_NAMES = set().union(*CAPABILITIES.values())
+UNSAFE_FUNCTION_NAMES = {"open", "exec", "eval", "compile", "__import__"}
+UNSAFE_MODULE_NAMES = {"os", "subprocess", "socket", "pathlib", "shutil", "tempfile", "urllib", "http"}
 
 
 class RestrictedPythonError(ValueError):
-    pass
+    def __init__(self, message: str, *, unsafe_attempt: bool = False) -> None:
+        super().__init__(message)
+        self.unsafe_attempt = unsafe_attempt
 
 
-PROXY_OPERATIONS = {
-    "repo": {"list_dir", "search_text", "read_file", "replace_text", "create_file", "delete_file", "git_diff"},
-    "runner": {"run_process"},
-}
+def _attribute_root_name(node: ast.AST) -> str | None:
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
 
 
-class _Validator(ast.NodeVisitor):
-    _simple = (
+def _has_private_access(node: ast.AST) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id.startswith("_")
+    if isinstance(node, ast.Attribute):
+        return node.attr.startswith("_") or _has_private_access(node.value)
+    return False
+
+
+def _extract_program(source: str) -> str:
+    fences = list(re.finditer(
+        r"^[ \t]*```([^\n`]*)\n(.*?)^[ \t]*```[ \t]*(?=\n|$)",
+        source,
+        re.MULTILINE | re.DOTALL,
+    ))
+    markers = list(re.finditer(r"^[ \t]*```", source, re.MULTILINE))
+    if not fences:
+        if markers:
+            raise RestrictedPythonError("malformed or unclosed code fence")
+        return source
+    if len(markers) != len(fences) * 2:
+        raise RestrictedPythonError("malformed or unclosed code fence")
+    programs = []
+    for fence in fences:
+        language = fence.group(1).strip().lower()
+        if language not in {"python", "py"}:
+            raise RestrictedPythonError("code fence must contain Python")
+        programs.append(fence.group(2))
+    return "\n".join(programs)
+
+
+class Validator(ast.NodeVisitor):
+    allowed = (
         ast.Module, ast.Expr, ast.Assign, ast.If, ast.For, ast.Constant, ast.List,
         ast.Tuple, ast.Dict, ast.Name, ast.Load, ast.Store, ast.Subscript,
         ast.BoolOp, ast.And, ast.Or, ast.UnaryOp, ast.Not, ast.USub,
@@ -31,227 +69,205 @@ class _Validator(ast.NodeVisitor):
     )
 
     def generic_visit(self, node: ast.AST) -> None:
-        if not isinstance(node, self._simple):
-            raise RestrictedPythonError(f"syntax is not allowed: {type(node).__name__}")
+        if not isinstance(node, self.allowed):
+            raise RestrictedPythonError(
+                f"syntax is not allowed: {type(node).__name__}",
+                unsafe_attempt=isinstance(node, (ast.Import, ast.ImportFrom)),
+            )
         super().generic_visit(node)
 
     def visit_Name(self, node: ast.Name) -> None:
         if node.id.startswith("_"):
-            raise RestrictedPythonError("private names are not allowed")
+            raise RestrictedPythonError("private names are not allowed", unsafe_attempt=True)
 
     def visit_Assign(self, node: ast.Assign) -> None:
         if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
             raise RestrictedPythonError("assignment target must be one local name")
-        self.visit(node.targets[0])
-        self.visit(node.value)
+        self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        raise RestrictedPythonError("attribute access is allowed only for capability calls")
+        raise RestrictedPythonError(
+            "attribute access is allowed only in capability calls",
+            unsafe_attempt=_has_private_access(node) or _attribute_root_name(node) in UNSAFE_MODULE_NAMES,
+        )
 
     def visit_Call(self, node: ast.Call) -> None:
-        if not isinstance(node.func, ast.Attribute) or not isinstance(node.func.value, ast.Name):
-            raise RestrictedPythonError("only repo/runner capability calls are allowed")
-        proxy = node.func.value.id
-        if proxy not in PROXY_OPERATIONS or node.func.attr not in PROXY_OPERATIONS[proxy]:
-            raise RestrictedPythonError("capability method is not allowed")
-        if any(keyword.arg is None for keyword in node.keywords):
-            raise RestrictedPythonError("expanded keyword arguments are not allowed")
-        for argument in node.args:
-            self.visit(argument)
+        if isinstance(node.func, ast.Name) and node.func.id == "finish":
+            if len(node.args) > 1 or node.keywords:
+                raise RestrictedPythonError("finish accepts at most one message")
+        elif isinstance(node.func, ast.Name) and node.func.id in KNOWN_CAPABILITY_NAMES:
+            raise RestrictedPythonError("capability calls must use their namespace")
+        elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+            namespace = node.func.value.id
+            if node.func.attr in CAPABILITIES.get(namespace, set()):
+                pass
+            else:
+                unsafe = (
+                    namespace in CAPABILITIES
+                    or namespace in UNSAFE_MODULE_NAMES
+                    or namespace.startswith("_")
+                    or node.func.attr.startswith("_")
+                )
+                raise RestrictedPythonError("capability method is not allowed", unsafe_attempt=unsafe)
+        elif isinstance(node.func, ast.Attribute):
+            raise RestrictedPythonError(
+                "only capability calls and finish are allowed",
+                unsafe_attempt=(
+                    _attribute_root_name(node.func) in CAPABILITIES
+                    or _attribute_root_name(node.func) in UNSAFE_MODULE_NAMES
+                    or _has_private_access(node.func)
+                ),
+            )
+        elif isinstance(node.func, ast.Name) and (
+            node.func.id in UNSAFE_FUNCTION_NAMES or node.func.id.startswith("_")
+        ):
+            raise RestrictedPythonError("only capability calls and finish are allowed", unsafe_attempt=True)
+        else:
+            raise RestrictedPythonError("only capability calls and finish are allowed")
+        for value in node.args:
+            self.visit(value)
         for keyword in node.keywords:
+            if keyword.arg is None:
+                raise RestrictedPythonError("expanded keyword arguments are not allowed")
             self.visit(keyword.value)
 
     def visit_For(self, node: ast.For) -> None:
         if node.orelse or not isinstance(node.target, ast.Name):
             raise RestrictedPythonError("for must bind one name and cannot use else")
-        iterator = node.iter
         if not (
-            isinstance(iterator, ast.Call)
-            and isinstance(iterator.func, ast.Name)
-            and iterator.func.id == "range"
-            and not iterator.keywords
-            and 1 <= len(iterator.args) <= 3
+            isinstance(node.iter, ast.Call) and isinstance(node.iter.func, ast.Name)
+            and node.iter.func.id == "range" and not node.iter.keywords
+            and 1 <= len(node.iter.args) <= 3
         ):
-            raise RestrictedPythonError("for loops require range with one to three arguments")
+            raise RestrictedPythonError("for loops require range")
         self.visit(node.target)
-        for argument in iterator.args:
-            self.visit(argument)
+        for value in node.iter.args:
+            self.visit(value)
         for statement in node.body:
             self.visit(statement)
 
 
-class _Interpreter:
-    def __init__(self, context: backend.BackendContext, action_id: str) -> None:
-        self.context = context
+class Interpreter:
+    def __init__(self, backend: Backend, action_id: str, loop_limit: int = 1000) -> None:
+        self.backend = backend
         self.action_id = action_id
+        self.loop_limit = loop_limit
         self.locals: dict[str, Any] = {}
         self.responses: list[dict[str, Any]] = []
-        self.schema = backend.load_schema()
-        self.loop_limit = context.permission.policy["resource_limits"]["restricted_python_loop_iterations"]
+        self.finished = False
         self.loop_iterations = 0
 
-    def run(self, tree: ast.Module) -> list[dict[str, Any]]:
-        self._statements(tree.body)
-        return self.responses
+    def run(self, tree: ast.Module) -> None:
+        self.statements(tree.body)
 
-    def _statements(self, statements: list[ast.stmt]) -> None:
+    def statements(self, statements: list[ast.stmt]) -> None:
         for statement in statements:
+            if self.finished:
+                return
             if isinstance(statement, ast.Assign):
-                self.locals[statement.targets[0].id] = self._expression(statement.value)
+                self.locals[statement.targets[0].id] = self.expression(statement.value)
             elif isinstance(statement, ast.Expr):
-                self._expression(statement.value)
+                self.expression(statement.value)
             elif isinstance(statement, ast.If):
-                branch = statement.body if self._expression(statement.test) else statement.orelse
-                self._statements(branch)
+                self.statements(statement.body if self.expression(statement.test) else statement.orelse)
             elif isinstance(statement, ast.For):
-                values = self._range(statement.iter)
-                self.loop_iterations += len(values)
-                if self.loop_iterations > self.loop_limit:
-                    raise RestrictedPythonError("loop iteration limit exceeded")
+                values = self.range_values(statement.iter)
                 for value in values:
                     self.locals[statement.target.id] = value
-                    self._statements(statement.body)
+                    self.statements(statement.body)
             else:
                 raise RestrictedPythonError(f"statement is not allowed: {type(statement).__name__}")
 
-    def _range(self, call: ast.Call) -> range:
-        values = [self._expression(argument) for argument in call.args]
-        if any(not isinstance(value, int) or isinstance(value, bool) for value in values):
+    def range_values(self, call: ast.Call) -> range:
+        values = [self.expression(value) for value in call.args]
+        if any(type(value) is not int for value in values):
             raise RestrictedPythonError("range arguments must be integers")
-        try:
-            result = range(*values)
-        except ValueError as exc:
-            raise RestrictedPythonError(str(exc)) from exc
-        if len(result) > self.loop_limit:
+        result = range(*values)
+        self.loop_iterations += len(result)
+        if self.loop_iterations > self.loop_limit:
             raise RestrictedPythonError("loop iteration limit exceeded")
         return result
 
-    def _expression(self, node: ast.expr) -> Any:
-        if isinstance(node, ast.Constant):
-            if not isinstance(node.value, (str, int, bool, type(None))):
-                raise RestrictedPythonError("literal type is not allowed")
+    def expression(self, node: ast.expr) -> Any:
+        if isinstance(node, ast.Constant) and isinstance(node.value, (str, int, bool, type(None))):
             return node.value
         if isinstance(node, (ast.List, ast.Tuple)):
-            values = [self._expression(item) for item in node.elts]
+            values = [self.expression(value) for value in node.elts]
             return values if isinstance(node, ast.List) else tuple(values)
         if isinstance(node, ast.Dict):
-            return {self._expression(key): self._expression(value) for key, value in zip(node.keys, node.values)}
+            return {self.expression(key): self.expression(value) for key, value in zip(node.keys, node.values)}
         if isinstance(node, ast.Name):
             if node.id not in self.locals:
                 raise RestrictedPythonError(f"unknown local name: {node.id}")
             return self.locals[node.id]
         if isinstance(node, ast.Subscript):
-            value = self._expression(node.value)
-            key = self._expression(node.slice)
-            if not isinstance(value, (dict, list, tuple, str)):
-                raise RestrictedPythonError("subscript target type is not allowed")
-            return value[key]
+            return self.expression(node.value)[self.expression(node.slice)]
         if isinstance(node, ast.BoolOp):
-            if isinstance(node.op, ast.And):
-                for item in node.values:
-                    if not self._expression(item):
-                        return False
-                return True
-            for item in node.values:
-                if self._expression(item):
-                    return True
-            return False
+            values = [bool(self.expression(value)) for value in node.values]
+            return all(values) if isinstance(node.op, ast.And) else any(values)
         if isinstance(node, ast.UnaryOp):
-            value = self._expression(node.operand)
+            value = self.expression(node.operand)
             if isinstance(node.op, ast.Not):
                 return not value
-            if isinstance(node.op, ast.USub) and isinstance(value, int) and not isinstance(value, bool):
+            if isinstance(node.op, ast.USub) and type(value) is int:
                 return -value
-            raise RestrictedPythonError("unary operation is not allowed")
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-            left, right = self._expression(node.left), self._expression(node.right)
-            if type(left) is type(right) and isinstance(left, (str, int, list, tuple)):
-                return operator.add(left, right)
-            raise RestrictedPythonError("addition operand types do not match")
+            return operator.add(self.expression(node.left), self.expression(node.right))
         if isinstance(node, ast.Compare):
-            return self._compare(node)
+            return self.compare(node)
         if isinstance(node, ast.Call):
-            return self._capability_call(node)
+            return self.call(node)
         raise RestrictedPythonError(f"expression is not allowed: {type(node).__name__}")
 
-    def _compare(self, node: ast.Compare) -> bool:
-        operations = {
-            ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.In: operator.contains,
-            ast.NotIn: lambda right, left: not operator.contains(right, left),
-            ast.Lt: operator.lt, ast.LtE: operator.le, ast.Gt: operator.gt, ast.GtE: operator.ge,
+    def compare(self, node: ast.Compare) -> bool:
+        functions = {
+            ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.Lt: operator.lt,
+            ast.LtE: operator.le, ast.Gt: operator.gt, ast.GtE: operator.ge,
+            ast.In: lambda left, right: left in right,
+            ast.NotIn: lambda left, right: left not in right,
         }
-        left = self._expression(node.left)
+        left = self.expression(node.left)
         for operation, comparator in zip(node.ops, node.comparators):
-            right = self._expression(comparator)
-            function = operations[type(operation)]
-            if isinstance(operation, (ast.In, ast.NotIn)):
-                matched = function(right, left)
-            else:
-                matched = function(left, right)
-            if not matched:
+            right = self.expression(comparator)
+            if not functions[type(operation)](left, right):
                 return False
             left = right
         return True
 
-    def _capability_call(self, node: ast.Call) -> dict[str, Any]:
+    def call(self, node: ast.Call) -> Any:
+        if isinstance(node.func, ast.Name):
+            self.finished = True
+            return None
         operation = node.func.attr
-        parameter_names = list(self.schema["operations"][operation]["parameters"])
-        if len(node.args) > len(parameter_names):
+        names = ARGUMENT_ORDER[operation]
+        if len(node.args) > len(names):
             raise RestrictedPythonError("too many positional arguments")
-        arguments = {
-            name: self._expression(value)
-            for name, value in zip(parameter_names, node.args)
-        }
+        arguments = {name: self.expression(value) for name, value in zip(names, node.args)}
         for keyword in node.keywords:
             if keyword.arg in arguments:
                 raise RestrictedPythonError(f"duplicate argument: {keyword.arg}")
-            arguments[keyword.arg] = self._expression(keyword.value)
-        request_id = f"{self.action_id}:op{len(self.responses) + 1}"
-        response = backend.execute(
-            {"operation": operation, "arguments": arguments, "request_id": request_id},
-            self.context,
-            self.schema,
-        )
+            arguments[keyword.arg] = self.expression(keyword.value)
+        response = self.backend.execute(operation, arguments, self.action_id)
         self.responses.append(response)
         return response
 
 
-def execute_action(source: str, context: backend.BackendContext, action_id: str) -> ActionResult:
-    """Validate and interpret one restricted program without using eval or exec."""
-    started = time.monotonic()
-    responses: list[dict[str, Any]] = []
-    interpreter: _Interpreter | None = None
+def execute_action(source: str, backend: Backend, action_id: str) -> ActionResult:
+    interpreter = Interpreter(backend, action_id)
     try:
         if not isinstance(source, str) or len(source) > 16384:
-            raise RestrictedPythonError("program must be a string of at most 16384 characters")
-        tree = ast.parse(source, mode="exec")
+            raise RestrictedPythonError("program is too large")
+        tree = ast.parse(_extract_program(source), mode="exec")
         if len(list(ast.walk(tree))) > 500:
             raise RestrictedPythonError("program AST is too large")
-        _Validator().visit(tree)
-        context.action_id = action_id
-        interpreter = _Interpreter(context, action_id)
-        responses = interpreter.run(tree)
-    except (SyntaxError, RestrictedPythonError, KeyError, IndexError, OverflowError, TypeError) as exc:
-        if interpreter is not None:
-            responses = interpreter.responses
-        error = {"code": "invalid_action", "message": str(exc), "retryable": False}
+        Validator().visit(tree)
+        interpreter.run(tree)
+        status = "finish" if interpreter.finished else "ok"
+        return ActionResult(status, observation(interpreter.responses), interpreter.responses)
+    except (SyntaxError, KeyError, IndexError, TypeError, ValueError) as exc:
         return ActionResult(
-            action_id=action_id,
-            parse_status="invalid",
-            backend_op_ids=[response["request_id"] for response in responses],
-            observation=format_observation(responses + [{"ok": False, "error": error}]),
-            error=error,
-            duration_ms=round((time.monotonic() - started) * 1000, 3),
-            backend_responses=responses,
+            "invalid",
+            observation(interpreter.responses + [{"error": str(exc)}]),
+            interpreter.responses,
+            getattr(exc, "unsafe_attempt", False),
         )
-
-    backend_error = next((response["error"] for response in responses if not response["ok"]), None)
-    return ActionResult(
-        action_id=action_id,
-        parse_status="ok",
-        backend_op_ids=[response["request_id"] for response in responses],
-        observation=format_observation(responses),
-        error=backend_error,
-        duration_ms=round((time.monotonic() - started) * 1000, 3),
-        backend_responses=responses,
-    )
