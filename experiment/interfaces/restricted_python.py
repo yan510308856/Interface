@@ -21,15 +21,25 @@ class RestrictedPythonError(ValueError):
 
 
 def _extract_program(source: str) -> str:
-    fences = list(re.finditer(r"```([^\n`]*)\n(.*?)```", source, re.DOTALL))
+    fences = list(re.finditer(
+        r"^[ \t]*```([^\n`]*)\n(.*?)^[ \t]*```[ \t]*(?=\n|$)",
+        source,
+        re.MULTILINE | re.DOTALL,
+    ))
+    markers = list(re.finditer(r"^[ \t]*```", source, re.MULTILINE))
     if not fences:
+        if markers:
+            raise RestrictedPythonError("malformed or unclosed code fence")
         return source
-    if len(fences) != 1 or source.count("```") != 2:
-        raise RestrictedPythonError("expected exactly one fenced Python program")
-    language = fences[0].group(1).strip().lower()
-    if language not in {"python", "py"}:
-        raise RestrictedPythonError("code fence must contain Python")
-    return fences[0].group(2)
+    if len(markers) != len(fences) * 2:
+        raise RestrictedPythonError("malformed or unclosed code fence")
+    programs = []
+    for fence in fences:
+        language = fence.group(1).strip().lower()
+        if language not in {"python", "py"}:
+            raise RestrictedPythonError("code fence must contain Python")
+        programs.append(fence.group(2))
+    return "\n".join(programs)
 
 
 class Validator(ast.NodeVisitor):
