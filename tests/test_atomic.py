@@ -9,6 +9,14 @@ from experiment.interfaces.atomic import execute_action
 from tests.helpers import git_repo, make_backend
 
 
+def tool_call(name: str, arguments: object, call_id: str = "call-1") -> list[dict[str, object]]:
+    return [{
+        "id": call_id,
+        "type": "function",
+        "function": {"name": name, "arguments": json.dumps(arguments)},
+    }]
+
+
 class AtomicTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -18,45 +26,45 @@ class AtomicTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
-    def test_raw_json_maps_to_one_operation(self):
-        action = json.dumps({"type": "tool_call", "operation": "read_file", "arguments": {"path": "sample.py"}})
-        result = execute_action(action, self.backend, "1")
+    def test_read_file_tool_call_maps_to_one_operation(self):
+        result = execute_action(tool_call("read_file", {"path": "sample.py"}), self.backend, "1")
         self.assertEqual("ok", result.status)
         self.assertEqual(1, self.backend.operation_count)
 
-    def test_prose_and_fenced_json_are_normalized(self):
-        action = '{"type":"tool_call","operation":"read_file","arguments":{"path":"sample.py"}}'
-        for source in (f"Let me inspect the repository.\n\n{action}", f"```json\n{action}\n```"):
-            result = execute_action(source, self.backend, "1")
-            self.assertEqual("ok", result.status)
-        self.assertEqual(2, self.backend.operation_count)
+    def test_replace_text_tool_call_maps_to_one_operation(self):
+        result = execute_action(
+            tool_call("replace_text", {"path": "sample.py", "old_text": "1", "new_text": "2"}),
+            self.backend,
+            "1",
+        )
+        self.assertEqual("ok", result.status)
+        self.assertEqual(1, self.backend.operation_count)
 
-    def test_missing_or_multiple_json_objects_are_invalid(self):
-        action = '{"type":"tool_call","operation":"read_file","arguments":{"path":"sample.py"}}'
-        for source in ("Let me inspect the repository.", f"{action}\n\n{action}"):
-            result = execute_action(source, self.backend, "bad")
-            self.assertEqual("invalid", result.status)
-        self.assertEqual(0, self.backend.operation_count)
-
-    def test_invalid_operation_is_not_repaired(self):
-        action = '{"type":"tool_call","operation":"open","arguments":{"path":"sample.py"}}'
-        result = execute_action(action, self.backend, "bad")
-        self.assertEqual("invalid", result.status)
-        self.assertTrue(result.unsafe_attempt)
-        self.assertEqual(0, self.backend.operation_count)
-
-    def test_prose_and_finish_json_finishes_without_operation(self):
-        result = execute_action('Done.\n\n{"type":"finish","message":"done"}', self.backend, "1")
+    def test_finish_tool_call_does_not_execute_backend(self):
+        result = execute_action(tool_call("finish", {"message": "done"}), self.backend, "1")
         self.assertEqual("finish", result.status)
         self.assertEqual(0, self.backend.operation_count)
 
-    def test_one_action_maps_to_at_most_one_operation(self):
-        action = json.dumps({"type": "tool_call", "operation": "read_file", "arguments": {"path": "sample.py"}})
-        result = execute_action(action, self.backend, "1")
-        self.assertEqual("ok", result.status)
-        self.assertEqual(1, self.backend.operation_count)
-        execute_action('{"type":"finish"}', self.backend, "2")
-        self.assertEqual(1, self.backend.operation_count)
+    def test_zero_or_multiple_tool_calls_are_invalid(self):
+        result = execute_action([], self.backend, "bad")
+        self.assertEqual("invalid", result.status)
+        calls = tool_call("read_file", {"path": "sample.py"}) + tool_call("git_diff", {})
+        result = execute_action(calls, self.backend, "bad")
+        self.assertEqual("invalid", result.status)
+        self.assertEqual(0, self.backend.operation_count)
+
+    def test_malformed_or_non_object_arguments_are_invalid(self):
+        malformed = [{"id": "call-1", "type": "function", "function": {"name": "read_file", "arguments": "{"}}]
+        non_object = tool_call("read_file", ["sample.py"])
+        self.assertEqual("invalid", execute_action(malformed, self.backend, "bad").status)
+        self.assertEqual("invalid", execute_action(non_object, self.backend, "bad").status)
+        self.assertEqual(0, self.backend.operation_count)
+
+    def test_unavailable_operation_is_rejected_as_unsafe(self):
+        result = execute_action(tool_call("open", {"path": "sample.py"}), self.backend, "bad")
+        self.assertEqual("invalid", result.status)
+        self.assertTrue(result.unsafe_attempt)
+        self.assertEqual(0, self.backend.operation_count)
 
 
 if __name__ == "__main__":

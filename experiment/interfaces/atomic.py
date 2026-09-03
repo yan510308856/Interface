@@ -3,62 +3,84 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from experiment.backend import Backend, OPERATIONS
 from experiment.interfaces import ActionResult, observation
 
 
-def _extract_json_object(source: str) -> str:
-    objects = []
-    start = None
-    depth = 0
-    in_string = escaped = False
-    for index, character in enumerate(source):
-        if in_string:
-            if escaped:
-                escaped = False
-            elif character == "\\":
-                escaped = True
-            elif character == '"':
-                in_string = False
-        elif character == '"' and depth:
-            in_string = True
-        elif character == "{":
-            if depth == 0:
-                start = index
-            depth += 1
-        elif character == "}" and depth:
-            depth -= 1
-            if depth == 0:
-                candidate = source[start:index + 1]
-                try:
-                    if isinstance(json.loads(candidate), dict):
-                        objects.append(candidate)
-                except json.JSONDecodeError:
-                    pass
-    if len(objects) != 1:
-        raise ValueError("expected exactly one complete JSON object")
-    return objects[0]
+def _tool(
+    name: str,
+    description: str,
+    properties: dict[str, Any],
+    required: list[str] | None = None,
+) -> dict[str, Any]:
+    parameters: dict[str, Any] = {
+        "type": "object", "properties": properties, "additionalProperties": False,
+    }
+    if required:
+        parameters["required"] = required
+    return {
+        "type": "function",
+        "function": {"name": name, "description": description, "parameters": parameters},
+    }
 
 
-def execute_action(source: str, backend: Backend, action_id: str) -> ActionResult:
+ATOMIC_TOOLS = [
+    _tool("read_file", "Read repository file lines.", {
+        "path": {"type": "string"},
+        "start_line": {"type": "integer"},
+        "end_line": {"type": "integer"},
+    }, ["path"]),
+    _tool("search_text", "Search repository text.", {
+        "query": {"type": "string"},
+        "path": {"type": "string"},
+        "glob": {"type": "string"},
+        "case_sensitive": {"type": "boolean"},
+    }, ["query"]),
+    _tool("replace_text", "Replace repository text.", {
+        "path": {"type": "string"},
+        "old_text": {"type": "string"},
+        "new_text": {"type": "string"},
+        "expected_replacements": {"type": "integer"},
+    }, ["path", "old_text", "new_text"]),
+    _tool("create_file", "Create a repository file.", {
+        "path": {"type": "string"},
+        "content": {"type": "string"},
+    }, ["path", "content"]),
+    _tool("delete_file", "Delete a repository file.", {
+        "path": {"type": "string"},
+    }, ["path"]),
+    _tool("run_process", "Run an allowed repository process.", {
+        "argv": {"type": "array", "items": {"type": "string"}},
+        "timeout_seconds": {"type": "integer"},
+    }, ["argv"]),
+    _tool("git_diff", "Read the repository diff.", {
+        "path": {"type": "string"},
+        "staged": {"type": "boolean"},
+    }),
+    _tool("finish", "Finish the repository task.", {"message": {"type": "string"}}),
+]
+
+
+def execute_action(tool_calls: list[dict[str, Any]], backend: Backend, action_id: str) -> ActionResult:
     unsafe_attempt = False
     try:
-        action = json.loads(_extract_json_object(source))
-        if not isinstance(action, dict):
-            raise ValueError("action must be a JSON object")
-        if action.get("type") == "finish":
-            if set(action) - {"type", "message"} or not isinstance(action.get("message", ""), str):
-                raise ValueError("invalid finish action")
-            return ActionResult("finish", observation([{"message": action.get("message", "")}]))
-        if set(action) != {"type", "operation", "arguments"} or action["type"] != "tool_call":
-            raise ValueError("expected a tool_call or finish action")
-        if action["operation"] not in OPERATIONS:
+        if not isinstance(tool_calls, list) or len(tool_calls) != 1:
+            raise ValueError("expected exactly one tool call")
+        function = tool_calls[0]["function"]
+        name = function["name"]
+        arguments = json.loads(function["arguments"])
+        if not isinstance(arguments, dict):
+            raise ValueError("arguments must be an object")
+        if name == "finish":
+            if set(arguments) - {"message"} or not isinstance(arguments.get("message", ""), str):
+                raise ValueError("invalid finish arguments")
+            return ActionResult("finish", observation([{"message": arguments.get("message", "")}]))
+        if name not in OPERATIONS:
             unsafe_attempt = True
             raise ValueError("operation is not available")
-        if not isinstance(action["arguments"], dict):
-            raise ValueError("arguments must be an object")
-        response = backend.execute(action["operation"], action["arguments"], action_id)
+        response = backend.execute(name, arguments, action_id)
         return ActionResult("ok", observation([response]), [response])
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         return ActionResult("invalid", observation([{"error": str(exc)}]), unsafe_attempt=unsafe_attempt)
