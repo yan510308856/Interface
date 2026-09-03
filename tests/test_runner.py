@@ -52,6 +52,10 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("Reason internally", common)
         self.assertIn("Do not finish merely because", common)
         self.assertIn("only after the repository task has actually been completed", common)
+        for command in ("pytest ...", "python -m pytest ...", "python3 -m pytest ..."):
+            self.assertIn(command, common)
+        self.assertIn("python script.py", common)
+        self.assertIn("python -c ...", common)
 
         atomic = runner.INTERFACE_PROMPTS["atomic"]
         self.assertIn("Use the provided tools to investigate and solve", atomic)

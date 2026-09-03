@@ -22,7 +22,9 @@ COMMON_PROMPT = (
     "Solve the repository issue. Inspect the relevant code, make the smallest correct repository change, "
     "inspect the resulting git diff, and run a relevant test when practical. Reason internally and use the "
     "provided interface for actions. Do not finish merely because you have identified a likely fix. Finish "
-    "only after the repository task has actually been completed."
+    "only after the repository task has actually been completed. Repository tests must currently be invoked "
+    "using `pytest ...`, `python -m pytest ...`, or `python3 -m pytest ...`; arbitrary `python script.py` "
+    "and `python -c ...` commands are unavailable."
 )
 INTERFACE_PROMPTS = {
     "atomic": """Use the provided tools to investigate and solve the repository issue.
