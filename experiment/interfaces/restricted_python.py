@@ -13,12 +13,28 @@ from experiment.interfaces import ActionResult, observation
 
 CAPABILITIES = {"repo": OPERATIONS - {"run_process"}, "runner": {"run_process"}}
 KNOWN_CAPABILITY_NAMES = set().union(*CAPABILITIES.values())
+UNSAFE_FUNCTION_NAMES = {"open", "exec", "eval", "compile", "__import__"}
+UNSAFE_MODULE_NAMES = {"os", "subprocess", "socket", "pathlib", "shutil", "tempfile", "urllib", "http"}
 
 
 class RestrictedPythonError(ValueError):
     def __init__(self, message: str, *, unsafe_attempt: bool = False) -> None:
         super().__init__(message)
         self.unsafe_attempt = unsafe_attempt
+
+
+def _attribute_root_name(node: ast.AST) -> str | None:
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
+def _has_private_access(node: ast.AST) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id.startswith("_")
+    if isinstance(node, ast.Attribute):
+        return node.attr.startswith("_") or _has_private_access(node.value)
+    return False
 
 
 def _extract_program(source: str) -> str:
@@ -70,7 +86,10 @@ class Validator(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        raise RestrictedPythonError("attribute access is allowed only in capability calls")
+        raise RestrictedPythonError(
+            "attribute access is allowed only in capability calls",
+            unsafe_attempt=_has_private_access(node) or _attribute_root_name(node) in UNSAFE_MODULE_NAMES,
+        )
 
     def visit_Call(self, node: ast.Call) -> None:
         if isinstance(node.func, ast.Name) and node.func.id == "finish":
@@ -79,10 +98,32 @@ class Validator(ast.NodeVisitor):
         elif isinstance(node.func, ast.Name) and node.func.id in KNOWN_CAPABILITY_NAMES:
             raise RestrictedPythonError("capability calls must use their namespace")
         elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
-            if node.func.attr not in CAPABILITIES.get(node.func.value.id, set()):
-                raise RestrictedPythonError("capability method is not allowed", unsafe_attempt=True)
-        else:
+            namespace = node.func.value.id
+            if node.func.attr in CAPABILITIES.get(namespace, set()):
+                pass
+            else:
+                unsafe = (
+                    namespace in CAPABILITIES
+                    or namespace in UNSAFE_MODULE_NAMES
+                    or namespace.startswith("_")
+                    or node.func.attr.startswith("_")
+                )
+                raise RestrictedPythonError("capability method is not allowed", unsafe_attempt=unsafe)
+        elif isinstance(node.func, ast.Attribute):
+            raise RestrictedPythonError(
+                "only capability calls and finish are allowed",
+                unsafe_attempt=(
+                    _attribute_root_name(node.func) in CAPABILITIES
+                    or _attribute_root_name(node.func) in UNSAFE_MODULE_NAMES
+                    or _has_private_access(node.func)
+                ),
+            )
+        elif isinstance(node.func, ast.Name) and (
+            node.func.id in UNSAFE_FUNCTION_NAMES or node.func.id.startswith("_")
+        ):
             raise RestrictedPythonError("only capability calls and finish are allowed", unsafe_attempt=True)
+        else:
+            raise RestrictedPythonError("only capability calls and finish are allowed")
         for value in node.args:
             self.visit(value)
         for keyword in node.keywords:
