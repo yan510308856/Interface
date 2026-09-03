@@ -42,6 +42,54 @@ Use finish("done") only after the repository task has actually been completed.
 Use repo.read_file/search_text/replace_text/create_file/delete_file/git_diff, runner.run_process, and finish("done").""",
 }
 
+MODEL_CONTEXT_LENGTH = 32768
+CONTEXT_SAFETY_MARGIN = 1024
+DEFAULT_MAX_OUTPUT_TOKENS = 2048
+
+
+def _prompt_token_budget(config: dict[str, Any]) -> int:
+    model_config = config.get("model", {})
+    return MODEL_CONTEXT_LENGTH - model_config.get("max_tokens", DEFAULT_MAX_OUTPUT_TOKENS) - CONTEXT_SAFETY_MARGIN
+
+
+def _prune_context(
+    messages: list[dict[str, Any]],
+    model: Model,
+    tools: list[dict[str, Any]] | None,
+    token_budget: int,
+    logger: JsonlLogger | None = None,
+    action_id: int | None = None,
+) -> int:
+    prompt_tokens_before = model.count_tokens(messages, tools=tools)
+    prompt_tokens_after = prompt_tokens_before
+    removed_groups = 0
+    while prompt_tokens_after > token_budget:
+        if len(messages) < 4 or messages[2].get("role") != "assistant":
+            raise ValueError("fixed messages exceed prompt token budget")
+        assistant_message = messages[2]
+        observation_message = messages[3]
+        if observation_message.get("role") == "tool":
+            tool_calls = assistant_message.get("tool_calls")
+            if not (
+                isinstance(tool_calls, list) and len(tool_calls) == 1
+                and isinstance(tool_calls[0], dict)
+                and tool_calls[0].get("id", "") == observation_message.get("tool_call_id")
+            ):
+                raise ValueError("cannot remove incomplete interaction group")
+        elif observation_message.get("role") != "user":
+            raise ValueError("cannot remove incomplete interaction group")
+        del messages[2:4]
+        removed_groups += 1
+        prompt_tokens_after = model.count_tokens(messages, tools=tools)
+    if removed_groups and logger is not None:
+        logger.append({
+            "event": "context_prune", "action_id": action_id,
+            "removed_groups": removed_groups,
+            "prompt_tokens_before": prompt_tokens_before,
+            "prompt_tokens_after": prompt_tokens_after,
+        })
+    return prompt_tokens_after
+
 
 def load_config(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -70,6 +118,8 @@ def run_one(
         backend = Backend(repo, PermissionEngine(repo, permission_policy), logger, budget["max_operations"])
         is_atomic = interface_name == "atomic"
         adapter = atomic if is_atomic else restricted_python
+        tools = atomic.ATOMIC_TOOLS if is_atomic else None
+        token_budget = _prompt_token_budget(config)
         messages = [
             {"role": "system", "content": COMMON_PROMPT + "\n" + INTERFACE_PROMPTS[interface_name]},
             {"role": "user", "content": task.problem_statement},
@@ -78,10 +128,16 @@ def run_one(
         for action_number in range(1, budget["max_actions"] + 1):
             if time.monotonic() - started >= budget["timeout_seconds"]:
                 break
-            logger.append({"event": "model_request", "action_id": action_number, "messages": messages})
+            prompt_tokens = _prune_context(
+                messages, model, tools, token_budget, logger, action_number,
+            )
+            logger.append({
+                "event": "model_request", "action_id": action_number,
+                "messages": messages, "prompt_tokens": prompt_tokens,
+            })
             if is_atomic:
                 generation = model.generate(
-                    messages, seed, tools=atomic.ATOMIC_TOOLS, tool_choice="auto",
+                    messages, seed, tools=tools, tool_choice="auto",
                 )
             else:
                 generation = model.generate(messages, seed)

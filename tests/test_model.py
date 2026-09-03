@@ -51,6 +51,24 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(tool_calls, generation.tool_calls)
         self.assertEqual("call-1", generation.tool_calls[0]["id"])
 
+    def test_count_tokens_sends_tools_only_for_atomic_context(self):
+        tools = [{"type": "function", "function": {"name": "read_file"}}]
+        messages = [{"role": "user", "content": "task"}]
+        with patch("experiment.model.urllib.request.urlopen", side_effect=[
+            io.BytesIO(json.dumps({"count": 17}).encode()),
+            io.BytesIO(json.dumps({"count": 9}).encode()),
+        ]) as urlopen:
+            self.assertEqual(17, Model(CONFIG).count_tokens(messages, tools=tools))
+            self.assertEqual(9, Model(CONFIG).count_tokens(messages))
+
+        first_body = json.loads(urlopen.call_args_list[0].args[0].data)
+        second_body = json.loads(urlopen.call_args_list[1].args[0].data)
+        self.assertEqual(CONFIG["name"], first_body["model"])
+        self.assertEqual(messages, first_body["messages"])
+        self.assertEqual(tools, first_body["tools"])
+        self.assertNotIn("tools", second_body)
+        self.assertTrue(urlopen.call_args_list[0].args[0].full_url.endswith("/tokenize"))
+
 
 if __name__ == "__main__":
     unittest.main()

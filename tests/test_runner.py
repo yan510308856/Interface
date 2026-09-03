@@ -6,13 +6,17 @@ from unittest.mock import patch
 from pathlib import Path
 
 from experiment import runner
+from experiment.logging import JsonlLogger
 from experiment.model import Generation
-from experiment.runner import run_one
+from experiment.runner import _prune_context, run_one
 from experiment.task import Task
 from tests.helpers import POLICY, git_repo
 
 
 class FakeModel:
+    def count_tokens(self, messages, tools=None):
+        return 1
+
     def generate(self, messages, seed, tools=None, tool_choice=None):
         if tools is not None:
             return Generation("", 10, 3, 0.01, [{
@@ -25,6 +29,9 @@ class FakeModel:
 class ConversationModel:
     def __init__(self):
         self.requests = []
+
+    def count_tokens(self, messages, tools=None):
+        return 1
 
     def generate(self, messages, seed, tools=None, tool_choice=None):
         self.requests.append({
@@ -45,7 +52,66 @@ class ConversationModel:
         return Generation('finish("done")', 10, 3, 0.01)
 
 
+class CountingModel:
+    def __init__(self):
+        self.calls = []
+
+    def count_tokens(self, messages, tools=None):
+        self.calls.append({"messages": [dict(message) for message in messages], "tools": tools})
+        return len(messages) * 10
+
+
 class RunnerTests(unittest.TestCase):
+    def test_context_budget_is_29696_with_default_output_budget(self):
+        self.assertEqual(29696, runner._prompt_token_budget({"model": {"max_tokens": 2048}}))
+
+    def test_context_under_budget_is_not_pruned(self):
+        messages = [{"role": "system", "content": "system"}, {"role": "user", "content": "task"}]
+        original = [dict(message) for message in messages]
+        model = CountingModel()
+        logger = JsonlLogger(Path(tempfile.mkdtemp()) / "trajectory.jsonl")
+        self.assertEqual(20, _prune_context(messages, model, None, 20, logger, 1))
+        self.assertEqual(original, messages)
+        self.assertEqual([], logger.read())
+
+    def test_atomic_pruning_removes_oldest_complete_pair_and_keeps_log(self):
+        old_call = [{"id": "old", "type": "function"}]
+        new_call = [{"id": "new", "type": "function"}]
+        messages = [
+            {"role": "system", "content": "system"}, {"role": "user", "content": "task"},
+            {"role": "assistant", "content": None, "tool_calls": old_call},
+            {"role": "tool", "tool_call_id": "old", "content": "old result"},
+            {"role": "assistant", "content": None, "tool_calls": new_call},
+            {"role": "tool", "tool_call_id": "new", "content": "new result"},
+        ]
+        logger = JsonlLogger(Path(tempfile.mkdtemp()) / "trajectory.jsonl")
+        logger.append({"event": "model_request", "action_id": 1, "messages": messages})
+        model = CountingModel()
+        after = _prune_context(messages, model, runner.atomic.ATOMIC_TOOLS, 40, logger, 2)
+        self.assertEqual(40, after)
+        self.assertEqual(["system", "task", "new", "new"], [
+            messages[0]["content"], messages[1]["content"],
+            messages[2]["tool_calls"][0]["id"], messages[3]["tool_call_id"],
+        ])
+        self.assertEqual(runner.atomic.ATOMIC_TOOLS, model.calls[0]["tools"])
+        events = logger.read()
+        self.assertEqual("old", events[0]["messages"][2]["tool_calls"][0]["id"])
+        self.assertEqual("context_prune", events[1]["event"])
+        self.assertNotIn("messages", events[1])
+
+    def test_restricted_pruning_removes_oldest_complete_pair_and_keeps_newest(self):
+        messages = [
+            {"role": "system", "content": "system"}, {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "old program"},
+            {"role": "user", "content": "old observation"},
+            {"role": "assistant", "content": "new program"},
+            {"role": "user", "content": "new observation"},
+        ]
+        model = CountingModel()
+        self.assertEqual(40, _prune_context(messages, model, None, 40))
+        self.assertEqual(["system", "task", "new program", "new observation"], [message["content"] for message in messages])
+        self.assertTrue(all(call["tools"] is None for call in model.calls))
+
     def test_interface_prompts_require_protocol_compliance(self):
         common = runner.COMMON_PROMPT
         self.assertIn("make the smallest correct repository change", common)
