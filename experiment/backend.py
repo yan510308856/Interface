@@ -28,6 +28,8 @@ ARGUMENT_ORDER = {
     "git_diff": ("path", "staged"),
 }
 
+DEFAULT_READ_LINES = 400
+
 
 class Backend:
     def __init__(self, repo_root: Path, permission: PermissionEngine, logger: JsonlLogger, max_operations: int) -> None:
@@ -76,7 +78,18 @@ class Backend:
         if start_line < 1 or (end_line is not None and end_line < start_line):
             raise ValueError("invalid line range")
         lines = file_path.read_text(encoding="utf-8").splitlines(keepends=True)
-        return {"path": relative, "content": "".join(lines[start_line - 1 : end_line])}
+        total_lines = len(lines)
+        truncated = end_line is None and start_line + DEFAULT_READ_LINES - 1 < total_lines
+        effective_end = end_line if end_line is not None else start_line + DEFAULT_READ_LINES - 1
+        returned_end = min(effective_end, total_lines)
+        return {
+            "path": relative,
+            "content": "".join(lines[start_line - 1 : effective_end]),
+            "start_line": start_line,
+            "end_line": returned_end,
+            "total_lines": total_lines,
+            "truncated": truncated,
+        }
 
     def _search_text(self, query: str, path: str = ".", glob: str | None = None, case_sensitive: bool = False) -> dict[str, Any]:
         root, _ = self._file(path, allow_root=True)
