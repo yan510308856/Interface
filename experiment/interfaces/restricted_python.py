@@ -37,26 +37,99 @@ def _has_private_access(node: ast.AST) -> bool:
     return False
 
 
-def _extract_program(source: str) -> str:
-    fences = list(re.finditer(
-        r"^[ \t]*```([^\n`]*)\n(.*?)^[ \t]*```[ \t]*(?=\n|$)",
-        source,
-        re.MULTILINE | re.DOTALL,
-    ))
-    markers = list(re.finditer(r"^[ \t]*```", source, re.MULTILINE))
+_FENCE_PATTERN = r"^[ \t]*```([^\n`]*)\n(.*?)^[ \t]*```[ \t]*(?=\n|$)"
+_FENCE_MARKER_PATTERN = r"^[ \t]*```"
+
+
+def _python_fences(source: str) -> list[re.Match[str]]:
+    fences = list(re.finditer(_FENCE_PATTERN, source, re.MULTILINE | re.DOTALL))
+    markers = list(re.finditer(_FENCE_MARKER_PATTERN, source, re.MULTILINE))
     if not fences:
         if markers:
             raise RestrictedPythonError("malformed or unclosed code fence")
-        return source
+        return []
     if len(markers) != len(fences) * 2:
         raise RestrictedPythonError("malformed or unclosed code fence")
-    programs = []
     for fence in fences:
         language = fence.group(1).strip().lower()
         if language not in {"python", "py"}:
             raise RestrictedPythonError("code fence must contain Python")
-        programs.append(fence.group(2))
-    return "\n".join(programs)
+    return fences
+
+
+def _extract_program(source: str) -> str:
+    fences = _python_fences(source)
+    if not fences:
+        return source
+    return "\n".join(fence.group(2) for fence in fences)
+
+
+def _strip_fenced_code(source: str) -> str:
+    fences = _python_fences(source)
+    if not fences:
+        return source
+    outside: list[str] = []
+    end = 0
+    for fence in fences:
+        outside.append(source[end:fence.start()])
+        end = fence.end()
+    outside.append(source[end:])
+    return "".join(outside)
+
+
+_STANDALONE_FINISH = re.compile(
+    r"^[ \t]*finish[ \t]*\([ \t]*(['\"])done\1[ \t]*\)[ \t]*\r?$",
+    re.MULTILINE,
+)
+_STANDALONE_FINISH_CALL = re.compile(
+    r"^[ \t]*finish[ \t]*\(.*\)[ \t]*\r?$",
+    re.MULTILINE,
+)
+_EXECUTABLE_MARKERS = re.compile(
+    r"(?mx)"
+    r"^\s*(?:import|from|if|for|while|with|def|class|return|raise|assert|yield|try|except|finally|"
+    r"async|await|del|pass|break|continue)\b"
+    r"|^\s*[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*\s*\("
+    r"|^\s*[A-Za-z_]\w*\s*=",
+)
+
+
+def _is_prose_expression(line: str) -> bool:
+    try:
+        tree = ast.parse(line, mode="exec")
+    except SyntaxError:
+        return False
+    return (
+        len(tree.body) == 1
+        and isinstance(tree.body[0], ast.Expr)
+        and isinstance(tree.body[0].value, ast.Name)
+    )
+
+
+def _normalize_standalone_finish(program: str) -> str | None:
+    """Extract a lone literal finish from otherwise non-Python prose."""
+    matches = list(_STANDALONE_FINISH.finditer(program))
+    if len(matches) != 1:
+        return None
+
+    match = matches[0]
+    remainder = program[:match.start()] + program[match.end():]
+    if not remainder.strip():
+        return 'finish("done")'
+
+    for line in remainder.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        try:
+            ast.parse(stripped, mode="exec")
+        except SyntaxError:
+            if _EXECUTABLE_MARKERS.search(stripped):
+                return None
+        else:
+            if not _is_prose_expression(stripped):
+                return None
+    return 'finish("done")'
 
 
 class Validator(ast.NodeVisitor):
@@ -95,6 +168,11 @@ class Validator(ast.NodeVisitor):
         if isinstance(node.func, ast.Name) and node.func.id == "finish":
             if len(node.args) > 1 or node.keywords:
                 raise RestrictedPythonError("finish accepts at most one message")
+            if node.args and not (
+                isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                raise RestrictedPythonError("finish message must be a literal")
         elif isinstance(node.func, ast.Name) and node.func.id in KNOWN_CAPABILITY_NAMES:
             raise RestrictedPythonError("capability calls must use their namespace")
         elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
@@ -257,10 +335,32 @@ def execute_action(source: str, backend: Backend, action_id: str) -> ActionResul
     try:
         if not isinstance(source, str) or len(source) > 16384:
             raise RestrictedPythonError("program is too large")
-        tree = ast.parse(_extract_program(source), mode="exec")
+        outside_fences = _strip_fenced_code(source)
+        if _STANDALONE_FINISH_CALL.search(outside_fences):
+            normalized = _normalize_standalone_finish(outside_fences)
+            program = normalized if normalized is not None else outside_fences
+        else:
+            program = _extract_program(source)
+        tree = ast.parse(program, mode="exec")
+        finish_calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "finish"
+        ]
         if len(list(ast.walk(tree))) > 500:
             raise RestrictedPythonError("program AST is too large")
         Validator().visit(tree)
+        if len(finish_calls) > 1:
+            raise RestrictedPythonError("only one finish call is allowed")
+        if finish_calls:
+            only_statement = (
+                len(tree.body) == 1
+                and isinstance(tree.body[0], ast.Expr)
+                and tree.body[0].value is finish_calls[0]
+            )
+            if not only_statement:
+                raise RestrictedPythonError("finish must be the only action")
         interpreter.run(tree)
         status = "finish" if interpreter.finished else "ok"
         return ActionResult(status, observation(interpreter.responses), interpreter.responses)

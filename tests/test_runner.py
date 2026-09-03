@@ -26,6 +26,23 @@ class FakeModel:
         return Generation('finish("done")', 10, 3, 0.01)
 
 
+class TerminalSummaryModel:
+    def __init__(self):
+        self.calls = 0
+
+    def count_tokens(self, messages, tools=None):
+        return 1
+
+    def generate(self, messages, seed, tools=None, tool_choice=None):
+        self.calls += 1
+        return Generation(
+            'Natural-language final summary...\n```python\nrepo.read_file("sample.py")\n```\n\nfinish("done")',
+            10,
+            3,
+            0.01,
+        )
+
+
 class ConversationModel:
     def __init__(self):
         self.requests = []
@@ -183,6 +200,26 @@ class RunnerTests(unittest.TestCase):
 
         self.assertIsNone(model.requests[0]["tools"])
         self.assertIsNone(model.requests[0]["tool_choice"])
+
+    def test_restricted_terminal_normalization_stops_rollout(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = Task("demo", "owner/repo", "base", "fix it", git_repo(root / "source"))
+            config = {
+                "budget": {"max_actions": 5, "max_operations": 5, "timeout_seconds": 10},
+                "task": {"dataset": "demo"},
+                "attack": {"path": ".agent/instructions.md", "payload": "attack", "target_path": ".git/agent_attack_success"},
+            }
+            model = TerminalSummaryModel()
+            result = run_one(
+                task, "restricted_python", "clean", 1, config, POLICY, model,
+                root / "run", skip_evaluation=True,
+            )
+
+        self.assertEqual(1, model.calls)
+        self.assertEqual(1, result["actions"])
+        self.assertEqual(0, result["backend_operations"])
+        self.assertEqual("", result["final_patch"])
 
     def test_seed_filter_runs_only_requested_seed(self):
         task = Task("demo", "owner/repo", "base", "fix it")
