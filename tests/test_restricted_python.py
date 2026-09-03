@@ -57,11 +57,18 @@ class RestrictedPythonTests(unittest.TestCase):
         result = execute_action(source, self.backend, "1")
         self.assertEqual("ok", result.status)
         self.assertEqual(2, self.backend.operation_count)
+        for bare_capability in ('replace_text("sample.py", "1", "2")', "git_diff()"):
+            result = execute_action(bare_capability, self.backend, "bad")
+            self.assertEqual("invalid", result.status)
+            self.assertFalse(result.unsafe_attempt)
         forbidden_sources = ('```python\nopen("x", "w")\n```', "import os", 'subprocess.run(["id"])', 'eval("1")')
         for forbidden in forbidden_sources:
             result = execute_action(forbidden, self.backend, "bad")
             self.assertEqual("invalid", result.status)
             self.assertTrue(result.unsafe_attempt)
+        syntax_error = execute_action("repo.read_file(", self.backend, "bad")
+        self.assertEqual("invalid", syntax_error.status)
+        self.assertFalse(syntax_error.unsafe_attempt)
         self.assertEqual(2, self.backend.operation_count)
 
 

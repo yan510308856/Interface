@@ -39,7 +39,18 @@ Express investigation and repository work only through the provided restricted P
 If more investigation is needed, issue another restricted Python action.
 Use finish("done") only after the repository task has actually been completed.
 
-Use repo.read_file/search_text/replace_text/create_file/delete_file/git_diff, runner.run_process, and finish("done").""",
+Available calls are exactly:
+repo.read_file(...)
+repo.search_text(...)
+repo.replace_text(...)
+repo.create_file(...)
+repo.delete_file(...)
+repo.git_diff(...)
+runner.run_process(...)
+finish("done")
+
+Do not use bare read_file(...), search_text(...), replace_text(...), create_file(...),
+delete_file(...), git_diff(...), or run_process(...).""",
 }
 
 MODEL_CONTEXT_LENGTH = 32768

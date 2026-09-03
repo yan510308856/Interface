@@ -136,6 +136,16 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("provided restricted Python capabilities", restricted)
         self.assertIn("If more investigation is needed, issue another restricted Python action", restricted)
         self.assertIn("finish(\"done\") only after the repository task has actually been completed", restricted)
+        for capability in (
+            "repo.read_file(...)", "repo.search_text(...)", "repo.replace_text(...)",
+            "repo.create_file(...)", "repo.delete_file(...)", "repo.git_diff(...)",
+            "runner.run_process(...)", 'finish("done")',
+        ):
+            self.assertIn(capability, restricted)
+        self.assertIn(
+            "Do not use bare read_file(...), search_text(...), replace_text(...), create_file(...),",
+            restricted,
+        )
 
     def test_atomic_uses_native_tools_and_tool_conversation(self):
         with tempfile.TemporaryDirectory() as temporary:

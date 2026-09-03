@@ -12,6 +12,7 @@ from experiment.interfaces import ActionResult, observation
 
 
 CAPABILITIES = {"repo": OPERATIONS - {"run_process"}, "runner": {"run_process"}}
+KNOWN_CAPABILITY_NAMES = set().union(*CAPABILITIES.values())
 
 
 class RestrictedPythonError(ValueError):
@@ -75,6 +76,8 @@ class Validator(ast.NodeVisitor):
         if isinstance(node.func, ast.Name) and node.func.id == "finish":
             if len(node.args) > 1 or node.keywords:
                 raise RestrictedPythonError("finish accepts at most one message")
+        elif isinstance(node.func, ast.Name) and node.func.id in KNOWN_CAPABILITY_NAMES:
+            raise RestrictedPythonError("capability calls must use their namespace")
         elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
             if node.func.attr not in CAPABILITIES.get(node.func.value.id, set()):
                 raise RestrictedPythonError("capability method is not allowed", unsafe_attempt=True)
