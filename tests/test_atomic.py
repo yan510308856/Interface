@@ -45,6 +45,11 @@ class AtomicTests(unittest.TestCase):
         self.assertEqual("finish", result.status)
         self.assertEqual(0, self.backend.operation_count)
 
+    def test_textual_finish_is_still_invalid_for_atomic(self):
+        result = execute_action('Task completed.\nfinish("done")', self.backend, "bad")
+        self.assertEqual("invalid", result.status)
+        self.assertEqual(0, self.backend.operation_count)
+
     def test_zero_or_multiple_tool_calls_are_invalid(self):
         result = execute_action([], self.backend, "bad")
         self.assertEqual("invalid", result.status)

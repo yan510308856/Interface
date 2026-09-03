@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from experiment.attack import prepare_condition
+from experiment.attack import finalize_condition, prepare_condition, render_attack_comment
 from experiment.backend import Backend
 from experiment.evaluate import outcome_class, security_outcomes
 from experiment.interfaces import atomic, restricted_python
@@ -183,9 +183,11 @@ def run_one(
                 ])
             if action.finished:
                 break
-        security = security_outcomes(logger.read(), repo, config["attack"]["target_path"])
-        if carrier and carrier.exists():
-            carrier.unlink()
+        finalize_condition(repo, carrier, config["attack"])
+        security = security_outcomes(
+            logger.read(), repo, config["attack"]["target_path"],
+            render_attack_comment(config["attack"]["payload"]),
+        )
         patch = backend.final_patch()
         task_success = None if skip_evaluation else evaluator(
             task, patch, output_dir, config["task"]["dataset"], budget["timeout_seconds"]

@@ -52,6 +52,71 @@ class RestrictedPythonTests(unittest.TestCase):
             self.assertEqual("invalid", result.status)
         self.assertEqual(0, self.backend.operation_count)
 
+    def test_prose_with_standalone_finish_is_normalized(self):
+        for source in (
+            'Task completed.\nfinish("done")',
+            "Done.\n\nfinish('done')",
+        ):
+            result = execute_action(source, self.backend, "finish")
+            self.assertEqual("finish", result.status)
+        self.assertEqual(0, self.backend.operation_count)
+
+    def test_a100_style_quoted_code_with_finish_is_normalized(self):
+        sources = (
+            """Natural-language final summary...
+```python
+cright[...] = 1
+```
+
+Explanation...
+
+finish("done")""",
+            """The example below is quoted for context.
+```python
+repo.read_file("sample.py")
+```
+The task is complete.
+finish('done')""",
+            """prose
+```python
+repo.read_file("sample.py")
+```
+finish("done")""",
+        )
+        for source in sources:
+            result = execute_action(source, self.backend, "quoted-finish")
+            self.assertEqual("finish", result.status)
+        self.assertEqual(0, self.backend.operation_count)
+
+    def test_finish_with_other_actions_is_still_terminal_only(self):
+        for source in (
+            'Summary\nrepo.read_file("sample.py")\nfinish("done")',
+            'Summary\nrepo.replace_text("sample.py", "1", "2")\nfinish("done")',
+            'Summary\nfinish("done")\nfinish("done")',
+        ):
+            result = execute_action(source, self.backend, "invalid-finish")
+            self.assertEqual("invalid", result.status)
+        self.assertEqual(0, self.backend.operation_count)
+
+    def test_finish_is_the_only_terminal_action(self):
+        for source in (
+            'finish("done")\nfinish("done")',
+            'repo.read_file("sample.py")\nfinish("done")',
+            'finish("done")\nrepo.read_file("sample.py")',
+            'print("x")\nfinish("done")',
+            'value = 1\nfinish("done")',
+            'foo()\nfinish("done")',
+            'finish(variable)',
+        ):
+            result = execute_action(source, self.backend, "invalid-finish")
+            self.assertEqual("invalid", result.status)
+        self.assertEqual(0, self.backend.operation_count)
+
+    def test_literal_finish_still_works(self):
+        result = execute_action('finish("done")', self.backend, "finish")
+        self.assertEqual("finish", result.status)
+        self.assertEqual(0, self.backend.operation_count)
+
     def test_program_composes_operations_and_blocks_python_apis(self):
         source = 'value = repo.read_file("sample.py")\nif "VALUE" in value["result"]["content"]:\n    repo.replace_text("sample.py", "1", "2")'
         result = execute_action(source, self.backend, "1")
