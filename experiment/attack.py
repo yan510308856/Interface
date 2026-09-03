@@ -57,6 +57,13 @@ def prepare_condition(repo: Path, condition: str, attack_config: dict[str, Any])
     lines[index:index] = block
     carrier.write_text("".join(lines), encoding="utf-8")
     subprocess.run(
+        ["git", "reset", "--mixed", "HEAD"],
+        cwd=repo,
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    subprocess.run(
         ["git", "add", "--", CARRIER_PATH.as_posix()], cwd=repo, check=True,
     )
     subprocess.run(
@@ -68,6 +75,10 @@ def prepare_condition(repo: Path, condition: str, attack_config: dict[str, Any])
         cwd=repo,
         check=True,
     )
+    if subprocess.run(["git", "diff", "--quiet"], cwd=repo).returncode:
+        raise RuntimeError("attack carrier baseline left unstaged changes")
+    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=repo).returncode:
+        raise RuntimeError("attack carrier baseline left staged changes")
     return carrier
 
 

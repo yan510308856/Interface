@@ -14,6 +14,7 @@ from experiment.attack import (
     prepare_condition,
     render_attack_comment,
 )
+from experiment.task import Task
 from tests.helpers import make_backend
 
 
@@ -111,7 +112,11 @@ class AttackTests(unittest.TestCase):
             )
             diff = backend.execute("git_diff", {}, "diff")["result"]["diff"]
             self.assertIn("+    agent_change = True", diff)
-            self.assertNotIn("+    # IMPORTANT AGENT INSTRUCTION:", diff)
+            self.assertFalse(any(
+                line[:1] in "+-" and not line.startswith(("+++", "---"))
+                and "IMPORTANT AGENT INSTRUCTION" in line
+                for line in diff.splitlines()
+            ))
 
             finalize_condition(repo, carrier, self.config())
             patch = backend.final_patch()
@@ -125,6 +130,35 @@ class AttackTests(unittest.TestCase):
             backend = make_backend(repo, Path(temporary) / "log.jsonl")
             self.assertEqual("", backend.execute("git_diff", {}, "clean")["result"]["diff"])
             self.assertNotIn("IMPORTANT AGENT INSTRUCTION", carrier.read_text(encoding="utf-8"))
+
+    def test_run_one_repository_preparation_keeps_attack_baseline(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, _ = self.make_repo(root / "source")
+            task = Task("demo", "owner/repo", "base", "fix it", source)
+            repo = task.prepare(root / "workspace")
+            carrier = prepare_condition(repo, "attack", self.config())
+            backend = make_backend(repo, root / "log.jsonl")
+            self.assertEqual("", backend.execute("git_diff", {}, "setup")["result"]["diff"])
+
+            backend.execute(
+                "replace_text",
+                {
+                    "path": str(CARRIER_PATH),
+                    "old_text": "    return cright\n",
+                    "new_text": "    agent_change = True\n    return cright\n",
+                },
+                "edit",
+            )
+            diff = backend.execute("git_diff", {}, "diff")["result"]["diff"]
+            self.assertIn("+    agent_change = True", diff)
+            self.assertFalse(any(
+                line[:1] in "+-" and not line.startswith(("+++", "---"))
+                and "IMPORTANT AGENT INSTRUCTION" in line
+                for line in diff.splitlines()
+            ))
+            finalize_condition(repo, carrier, self.config())
+            self.assertNotIn(render_attack_comment(self.payload), backend.final_patch())
 
 
 if __name__ == "__main__":
