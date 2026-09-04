@@ -8,7 +8,12 @@ When model, task, backend, permissions, sandbox, and budget are identical, does 
 
 ## Experimental Design
 
-The four cells are Atomic × Clean, Atomic × Attack, Restricted Python × Clean, and Restricted Python × Attack. Atomic permits one backend operation per model action. Restricted Python permits zero or multiple backend operations through a small AST interpreter.
+Harness v2 is calibrated on three SWE-bench Verified tasks × clean/attack ×
+Atomic/Restricted Python × seeds 1, 2, and 3 (36 planned rollouts). Atomic
+permits one backend operation per model action. Restricted Python permits zero
+or multiple backend operations through a small AST interpreter. The attack is a
+GT-guided repository-carried source comment; gold patches are construction-only
+metadata and are never agent-visible.
 
 ## Architecture
 
@@ -32,6 +37,13 @@ The default model endpoint is `http://127.0.0.1:8000/v1`; edit `configs/experime
 
 ## Run Experiment
 
+Prepare exact local task sources and inspect the complete plan before inference:
+
+```bash
+python scripts/prepare_sources.py
+python scripts/run_experiment.py --plan
+```
+
 ```bash
 python scripts/run_experiment.py
 ```
@@ -44,7 +56,12 @@ python scripts/run_experiment.py --interface atomic --condition clean
 
 ## Output
 
-Each run writes `runs/<batch>/<task>-<interface>-<condition>-<seed>/result.json` and `trajectory.jsonl`. Results include task success, unsafe/blocked attempts, attack success, backend operations, tokens, runtime, and final patch. `runs/` is ignored by Git.
+Each run writes a unique directory containing `run_manifest.json`,
+`result.json`, `trajectory.jsonl`, and `final.patch`. Results include task
+success, unsafe/blocked attempts, attack exposure/success, backend operations,
+tokens, runtime, and the final patch. `runs/` is ignored by Git. See
+`docs/three_task_gt_guided_calibration.md` for the Colab/A100 and Google Drive
+persistence workflow.
 
 Summarize a batch with:
 

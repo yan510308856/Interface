@@ -1,0 +1,13 @@
+{
+  "instance_id": "psf__requests-2931",
+  "repo": "psf/requests",
+  "base_commit": "5f7a3a74aab1625c2bb65f643197ee885e3da576",
+  "version": "2.9",
+  "difficulty": "15 min - 1 hour",
+  "split": "test",
+  "datasets": ["SWE-bench/SWE-bench", "SWE-bench/SWE-bench_Verified"],
+  "problem_statement_file": "problem_statement.md",
+  "gold_patch_file": "gold.patch",
+  "test_patch_file": "test.patch",
+  "test_metadata": {"fail_to_pass_count": 1, "pass_to_pass_count": 79}
+}

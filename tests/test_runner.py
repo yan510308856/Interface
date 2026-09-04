@@ -227,10 +227,11 @@ class RunnerTests(unittest.TestCase):
             "model": {}, "task": {"file": "unused", "dataset": "demo"},
             "interfaces": ["atomic"], "conditions": ["clean"], "seeds": [1, 2, 3],
         }
-        with patch.object(runner, "load_tasks", return_value=[task]), patch.object(runner, "Model"), patch.object(
-            runner, "run_one", return_value={"seed": 1}
-        ) as mocked_run:
-            results = runner.run_experiment(config, POLICY, Path("unused"), seed_filter=1)
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.object(runner, "load_tasks", return_value=[task]), patch.object(runner, "Model"), patch.object(
+                runner, "run_one", return_value={"seed": 1}
+            ) as mocked_run:
+                results = runner.run_experiment(config, POLICY, Path(temporary), seed_filter=1)
         self.assertEqual([{"seed": 1}], results)
         self.assertEqual(1, mocked_run.call_args.args[3])
 

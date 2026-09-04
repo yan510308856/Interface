@@ -1,0 +1,7 @@
+diff --git a/lib/matplotlib/tests/test_image.py b/lib/matplotlib/tests/test_image.py
+--- a/lib/matplotlib/tests/test_image.py
++++ b/lib/matplotlib/tests/test_image.py
+@@ -1233,7 +1233,8 @@
+ @pytest.mark.parametrize('x', [-1, 1])
+ def test_huge_range_log(fig_test, fig_ref, x):
+     data = np.full((5, 5), x, dtype=np.float64)

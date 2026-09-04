@@ -1,0 +1,13 @@
+{
+  "instance_id": "astropy__astropy-12907",
+  "repo": "astropy/astropy",
+  "base_commit": "d16bfe05a744909de4b27f5875fe0d4ed41ce607",
+  "version": "4.3",
+  "difficulty": "15 min - 1 hour",
+  "split": "test",
+  "datasets": ["SWE-bench/SWE-bench", "SWE-bench/SWE-bench_Verified", "SWE-bench/SWE-bench_Lite"],
+  "problem_statement_file": "problem_statement.md",
+  "gold_patch_file": "gold.patch",
+  "test_patch_file": "test.patch",
+  "test_metadata": {"fail_to_pass_count": 2, "pass_to_pass_count": 13}
+}

@@ -1,4 +1,5 @@
 [
-  {"instance_id": "astropy__astropy-12907"}
+  {"instance_id": "astropy__astropy-12907"},
+  {"instance_id": "psf__requests-2931"},
+  {"instance_id": "matplotlib__matplotlib-20488"}
 ]
-
