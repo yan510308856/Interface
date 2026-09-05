@@ -152,16 +152,40 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("Make the smallest correct repository change", atomic)
 
         restricted = runner.INTERFACE_PROMPTS["restricted_python"]
-        self.assertIn("exactly one restricted Python program", restricted)
-        self.assertIn("Do not output explanations, Markdown, or code fences", restricted)
+        self.assertTrue(restricted.startswith("STRICT RESPONSE FORMAT\n"))
+        for rule in (
+            "Output ONLY raw restricted Python source code",
+            "Do NOT output explanations",
+            "Do NOT output Markdown",
+            "Do NOT use ``` code fences",
+            "Do NOT write text before or after the program",
+        ):
+            self.assertIn(rule, restricted)
+        example = restricted.split(
+            "LEGAL COMPLETE ASSISTANT RESPONSE EXAMPLE\n\n", 1,
+        )[1].split("\n\nINVALID RESPONSES", 1)[0]
+        self.assertEqual(
+            'r = repo.read_file("example.py")\n'
+            'if r["ok"]:\n'
+            '    content = r["result"]["content"]',
+            example,
+        )
+        self.assertNotIn("```", example)
+        for invalid_example in (
+            'Prose such as "Let me inspect the file"',
+            "Markdown code fences",
+            "Prose followed by Python",
+            "Multiple separately fenced snippets",
+        ):
+            self.assertIn(invalid_example, restricted)
         self.assertIn("A program may execute zero or more Backend calls in sequence", restricted)
-        self.assertIn("calls execute in program order", restricted)
-        self.assertIn("This composition is specific to the Restricted Python interface", restricted)
+        self.assertIn("in program order", restricted)
         self.assertIn("response[\"ok\"]", restricted)
         self.assertIn("response[\"status\"]", restricted)
         self.assertIn("response[\"result\"]", restricted)
         self.assertIn("response[\"error\"]", restricted)
-        self.assertIn("Local Python variables exist only inside the current response program", restricted)
+        self.assertIn("Local variables exist only in the current response", restricted)
+        self.assertIn("Repository changes persist across responses", restricted)
         self.assertIn("repo.read_file(path, start_line=1, end_line=None)", restricted)
         self.assertIn("runner.run_process(argv, timeout_seconds=300)", restricted)
         self.assertIn("r = repo.read_file(\"example.py\")", restricted)
@@ -174,8 +198,17 @@ class RunnerTests(unittest.TestCase):
             "runner.run_process(argv, timeout_seconds=300)", 'finish("done")',
         ):
             self.assertIn(capability, restricted)
-        self.assertIn("Do not use import or `__import__`", restricted)
-        self.assertIn("bare `read_file(...)`, `search_text(...)`, `run_process(...)`", restricted)
+        self.assertIn("Do not use imports", restricted)
+        self.assertIn("Bare capability calls such as `read_file(...)` are invalid", restricted)
+        self.assertIn('Completion must be exactly `finish("done")`', restricted)
+
+        final_prompt = runner._system_prompt("restricted_python")
+        self.assertTrue(final_prompt.startswith("STRICT RESPONSE FORMAT\n"))
+        self.assertIn("\n\nTASK OBJECTIVE\n\n" + runner.COMMON_PROMPT, final_prompt)
+        self.assertEqual(
+            runner.COMMON_PROMPT + "\n" + runner.INTERFACE_PROMPTS["atomic"],
+            runner._system_prompt("atomic"),
+        )
 
     def test_atomic_uses_native_tools_and_tool_conversation(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -218,11 +251,11 @@ class RunnerTests(unittest.TestCase):
         self.assertIsNone(model.requests[0]["tools"])
         self.assertIsNone(model.requests[0]["tool_choice"])
         self.assertEqual(
-            runner.COMMON_PROMPT + "\n" + runner.INTERFACE_PROMPTS["restricted_python"],
+            runner._system_prompt("restricted_python"),
             model.requests[0]["messages"][0]["content"],
         )
 
-    def test_restricted_terminal_normalization_stops_rollout(self):
+    def test_restricted_prose_terminal_response_is_invalid_until_budget_ends(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             task = Task("demo", "owner/repo", "base", "fix it", git_repo(root / "source"))
@@ -237,8 +270,8 @@ class RunnerTests(unittest.TestCase):
                 root / "run", skip_evaluation=True,
             )
 
-        self.assertEqual(1, model.calls)
-        self.assertEqual(1, result["actions"])
+        self.assertEqual(5, model.calls)
+        self.assertEqual(5, result["actions"])
         self.assertEqual(0, result["backend_operations"])
         self.assertEqual("", result["final_patch"])
 

@@ -24,15 +24,16 @@ class RestrictedPythonTests(unittest.TestCase):
             self.assertEqual("ok", result.status)
         self.assertEqual(3, self.backend.operation_count)
 
-    def test_multiple_python_fenced_programs_are_concatenated_in_order(self):
+    def test_multiple_python_fenced_programs_are_not_salvaged(self):
         source = (
             'prose\n```python\nrepo.search_text("x", ".")\n```\n'
             'more prose\n```py\nrepo.read_file("sample.py")\n```'
         )
-        self.assertEqual('repo.search_text("x", ".")\n\nrepo.read_file("sample.py")\n', _extract_program(source))
+        with self.assertRaisesRegex(ValueError, "at most one"):
+            _extract_program(source)
         result = execute_action(source, self.backend, "1")
-        self.assertEqual("ok", result.status)
-        self.assertEqual(2, self.backend.operation_count)
+        self.assertEqual("invalid", result.status)
+        self.assertEqual(0, self.backend.operation_count)
 
     def test_mixed_or_non_python_fenced_programs_are_invalid(self):
         mixed = '```python\nrepo.read_file("sample.py")\n```\n```javascript\nopen("x")\n```'
@@ -52,16 +53,21 @@ class RestrictedPythonTests(unittest.TestCase):
             self.assertEqual("invalid", result.status)
         self.assertEqual(0, self.backend.operation_count)
 
-    def test_prose_with_standalone_finish_is_normalized(self):
+    def test_prose_only_is_invalid(self):
+        result = execute_action("Looking at this issue, I need to inspect the file.", self.backend, "prose")
+        self.assertEqual("invalid", result.status)
+        self.assertEqual(0, self.backend.operation_count)
+
+    def test_prose_with_standalone_finish_is_invalid(self):
         for source in (
             'Task completed.\nfinish("done")',
             "Done.\n\nfinish('done')",
         ):
             result = execute_action(source, self.backend, "finish")
-            self.assertEqual("finish", result.status)
+            self.assertEqual("invalid", result.status)
         self.assertEqual(0, self.backend.operation_count)
 
-    def test_a100_style_quoted_code_with_finish_is_normalized(self):
+    def test_a100_style_prose_fences_and_finish_are_invalid(self):
         sources = (
             """Natural-language final summary...
 ```python
@@ -85,7 +91,7 @@ finish("done")""",
         )
         for source in sources:
             result = execute_action(source, self.backend, "quoted-finish")
-            self.assertEqual("finish", result.status)
+            self.assertEqual("invalid", result.status)
         self.assertEqual(0, self.backend.operation_count)
 
     def test_finish_with_other_actions_is_still_terminal_only(self):
@@ -107,6 +113,9 @@ finish("done")""",
             'value = 1\nfinish("done")',
             'foo()\nfinish("done")',
             'finish(variable)',
+            'finish()',
+            'finish("complete")',
+            'finish(message="done")',
         ):
             result = execute_action(source, self.backend, "invalid-finish")
             self.assertEqual("invalid", result.status)
@@ -143,6 +152,19 @@ finish("done")""",
         self.assertEqual("invalid", syntax_error.status)
         self.assertFalse(syntax_error.unsafe_attempt)
         self.assertEqual(2, self.backend.operation_count)
+
+    def test_locals_reset_but_repository_changes_persist_between_responses(self):
+        edited = execute_action(
+            'r = repo.replace_text("sample.py", "1", "2")', self.backend, "edit",
+        )
+        self.assertEqual("ok", edited.status)
+
+        stale_local = execute_action('repo.read_file(r["result"]["path"])', self.backend, "stale")
+        self.assertEqual("invalid", stale_local.status)
+
+        reread = execute_action('repo.read_file("sample.py")', self.backend, "read")
+        self.assertEqual("ok", reread.status)
+        self.assertIn("VALUE = 2", reread.responses[0]["result"]["content"])
 
 
 if __name__ == "__main__":

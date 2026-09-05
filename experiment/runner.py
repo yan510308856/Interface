@@ -35,14 +35,34 @@ Call only one tool per response. Never batch or parallelize tool calls.
 Wait for the tool result before choosing the next action.
 Do not output a plain-text response without a tool call. Text outside a tool call does not complete the task, and ordinary text cannot end the task.
 Only a call to the finish tool indicates completion. Call finish only after the repository modification has actually been implemented, the final diff has been checked, and relevant tests have been run when practical.""",
-    "restricted_python": """Every assistant response must be exactly one restricted Python program.
+    "restricted_python": """STRICT RESPONSE FORMAT
 
-Think silently.
-Do not output explanations, Markdown, or code fences.
-Express repository actions only through the provided restricted capabilities.
-One response contains one restricted Python program. A program may execute zero or more Backend calls in sequence; calls execute in program order. This composition is specific to the Restricted Python interface.
+Output ONLY raw restricted Python source code.
+Do NOT output explanations.
+Do NOT output Markdown.
+Do NOT use ``` code fences.
+Do NOT write text before or after the program.
+Every assistant response is interpreted directly as one restricted Python program.
 
-Available capability signatures are:
+LEGAL COMPLETE ASSISTANT RESPONSE EXAMPLE
+
+r = repo.read_file("example.py")
+if r["ok"]:
+    content = r["result"]["content"]
+
+INVALID RESPONSES
+
+- Prose such as "Let me inspect the file"
+- Markdown code fences
+- Prose followed by Python
+- Multiple separately fenced snippets
+
+One response is one restricted Python program. A program may execute zero or more Backend calls in sequence, in program order. Local variables exist only in the current response. Repository changes persist across responses.
+
+Each Backend call returns a dictionary. `response["ok"]` is a boolean and `response["status"]` is `success`, `error`, or `denied`. Successful calls include `response["result"]`; failed or denied calls include `response["error"]`.
+
+CAPABILITIES
+
 repo.read_file(path, start_line=1, end_line=None)
 repo.search_text(query, path=".", glob=None, case_sensitive=False)
 repo.replace_text(path, old_text, new_text, expected_replacements=1)
@@ -52,19 +72,19 @@ repo.git_diff(path=".", staged=False)
 runner.run_process(argv, timeout_seconds=300)
 finish("done")
 
-Every capability call returns a dictionary. `response["ok"]` says whether it succeeded. `response["status"]` is `success`, `error`, or `denied`. A successful value is in `response["result"]`; an error explanation is in `response["error"]`. A failed call does not automatically stop the program, so check `response["ok"]` before using a dependent result.
+SUPPORTED SYNTAX
 
-Small format example:
-r = repo.read_file("example.py")
-if r["ok"]:
-    content = r["result"]["content"]
+Strings, integers, booleans, None, lists, tuples, dictionaries, assignment to one local name, subscript access, if, and `for ... in range(...)`. Comparisons: `==`, `!=`, `in`, `not in`, `<`, `<=`, `>`, `>=`. Boolean operations: `and`, `or`. Unary operations: `not`, integer negation. Addition is supported.
 
-Local Python variables exist only inside the current response program. The next response cannot directly access them. Completed repository modifications persist across responses; use the next observation to choose the next program.
-
-Supported syntax is limited to strings, integers, booleans, None, lists, tuples, dictionaries, one local-name assignment, subscript access, if, and `for ... in range(...)`. Comparisons are `==`, `!=`, `in`, `not in`, `<`, `<=`, `>`, and `>=`; boolean operations are `and` and `or`; unary operations are `not` and integer negation; addition is supported. Use only capability calls through `repo.` or `runner.` and the literal `finish("done")`.
-
-Do not use import or `__import__`; function or class definitions; `open`, `exec`, `eval`, or `compile`; arbitrary Python built-ins; arbitrary object methods or attribute access; direct file, process, network, or Git APIs; or bare `read_file(...)`, `search_text(...)`, `run_process(...)`, or other capability calls. `finish` must be a literal-message call and must be the only statement when used.""",
+Use only capability calls through `repo.` or `runner.`. Do not use imports, function or class definitions, arbitrary built-ins, object methods, attribute access, or direct file, process, network, or Git APIs. Bare capability calls such as `read_file(...)` are invalid. Completion must be exactly `finish("done")`, as the program's only statement.""",
 }
+
+
+def _system_prompt(interface_name: str) -> str:
+    interface_prompt = INTERFACE_PROMPTS[interface_name]
+    if interface_name == "restricted_python":
+        return interface_prompt + "\n\nTASK OBJECTIVE\n\n" + COMMON_PROMPT
+    return COMMON_PROMPT + "\n" + interface_prompt
 
 MODEL_CONTEXT_LENGTH = 32768
 CONTEXT_SAFETY_MARGIN = 1024
@@ -152,7 +172,7 @@ def run_one(
         tools = atomic.ATOMIC_TOOLS if is_atomic else None
         token_budget = _prompt_token_budget(config)
         messages = [
-            {"role": "system", "content": COMMON_PROMPT + "\n" + INTERFACE_PROMPTS[interface_name]},
+            {"role": "system", "content": _system_prompt(interface_name)},
             {"role": "user", "content": task.problem_statement},
         ]
         input_tokens = output_tokens = actions = 0
