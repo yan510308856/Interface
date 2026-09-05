@@ -131,38 +131,51 @@ class RunnerTests(unittest.TestCase):
 
     def test_interface_prompts_require_protocol_compliance(self):
         common = runner.COMMON_PROMPT
-        self.assertIn("make the smallest correct repository change", common)
-        self.assertIn("Reason internally", common)
-        self.assertIn("Do not finish merely because", common)
-        self.assertIn("only after the repository task has actually been completed", common)
+        self.assertIn("Solve the repository problem described in the user message", common)
+        self.assertIn("Before editing, inspect the relevant repository code", common)
+        self.assertIn("identifying a likely fix is not task completion", common)
+        self.assertIn("inspect the final git diff", common)
+        self.assertIn("A tool failure, permission denial, or test-environment failure is not success", common)
+        self.assertIn("If a test was not run or failed, do not claim that it passed", common)
         for command in ("pytest ...", "python -m pytest ...", "python3 -m pytest ..."):
             self.assertIn(command, common)
         self.assertIn("python script.py", common)
         self.assertIn("python -c ...", common)
 
         atomic = runner.INTERFACE_PROMPTS["atomic"]
-        self.assertIn("Use the provided tools to investigate and solve", atomic)
-        self.assertIn("Make the smallest correct repository change", atomic)
-        self.assertIn("Inspect the resulting diff", atomic)
-        self.assertIn("Use finish only after the repository task has actually been completed", atomic)
-        self.assertNotIn("JSON object", atomic)
+        self.assertIn("Every assistant response must contain exactly one native tool call", atomic)
+        self.assertIn("Call only one tool per response", atomic)
+        self.assertIn("Never batch or parallelize tool calls", atomic)
+        self.assertIn("Wait for the tool result", atomic)
+        self.assertIn("ordinary text cannot end the task", atomic)
+        self.assertIn("Only a call to the finish tool indicates completion", atomic)
+        self.assertNotIn("Make the smallest correct repository change", atomic)
 
         restricted = runner.INTERFACE_PROMPTS["restricted_python"]
         self.assertIn("exactly one restricted Python program", restricted)
-        self.assertIn("Never output prose, analysis, Markdown, or code fences", restricted)
-        self.assertIn("provided restricted Python capabilities", restricted)
-        self.assertIn("If more investigation is needed, issue another restricted Python action", restricted)
-        self.assertIn("finish(\"done\") only after the repository task has actually been completed", restricted)
+        self.assertIn("Do not output explanations, Markdown, or code fences", restricted)
+        self.assertIn("A program may execute zero or more Backend calls in sequence", restricted)
+        self.assertIn("calls execute in program order", restricted)
+        self.assertIn("This composition is specific to the Restricted Python interface", restricted)
+        self.assertIn("response[\"ok\"]", restricted)
+        self.assertIn("response[\"status\"]", restricted)
+        self.assertIn("response[\"result\"]", restricted)
+        self.assertIn("response[\"error\"]", restricted)
+        self.assertIn("Local Python variables exist only inside the current response program", restricted)
+        self.assertIn("repo.read_file(path, start_line=1, end_line=None)", restricted)
+        self.assertIn("runner.run_process(argv, timeout_seconds=300)", restricted)
+        self.assertIn("r = repo.read_file(\"example.py\")", restricted)
         for capability in (
-            "repo.read_file(...)", "repo.search_text(...)", "repo.replace_text(...)",
-            "repo.create_file(...)", "repo.delete_file(...)", "repo.git_diff(...)",
-            "runner.run_process(...)", 'finish("done")',
+            "repo.read_file(path, start_line=1, end_line=None)",
+            "repo.search_text(query, path=\".\", glob=None, case_sensitive=False)",
+            "repo.replace_text(path, old_text, new_text, expected_replacements=1)",
+            "repo.create_file(path, content)", "repo.delete_file(path)",
+            "repo.git_diff(path=\".\", staged=False)",
+            "runner.run_process(argv, timeout_seconds=300)", 'finish("done")',
         ):
             self.assertIn(capability, restricted)
-        self.assertIn(
-            "Do not use bare read_file(...), search_text(...), replace_text(...), create_file(...),",
-            restricted,
-        )
+        self.assertIn("Do not use import or `__import__`", restricted)
+        self.assertIn("bare `read_file(...)`, `search_text(...)`, `run_process(...)`", restricted)
 
     def test_atomic_uses_native_tools_and_tool_conversation(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -179,6 +192,10 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(1, result["backend_operations"])
         self.assertEqual(runner.atomic.ATOMIC_TOOLS, model.requests[0]["tools"])
         self.assertEqual("auto", model.requests[0]["tool_choice"])
+        self.assertEqual(
+            runner.COMMON_PROMPT + "\n" + runner.INTERFACE_PROMPTS["atomic"],
+            model.requests[0]["messages"][0]["content"],
+        )
         assistant = model.requests[1]["messages"][-2]
         tool = model.requests[1]["messages"][-1]
         self.assertEqual("assistant", assistant["role"])
@@ -200,6 +217,10 @@ class RunnerTests(unittest.TestCase):
 
         self.assertIsNone(model.requests[0]["tools"])
         self.assertIsNone(model.requests[0]["tool_choice"])
+        self.assertEqual(
+            runner.COMMON_PROMPT + "\n" + runner.INTERFACE_PROMPTS["restricted_python"],
+            model.requests[0]["messages"][0]["content"],
+        )
 
     def test_restricted_terminal_normalization_stops_rollout(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -271,6 +292,7 @@ class RunnerTests(unittest.TestCase):
             self.assertIsNone(result["outcome"])
             self.assertTrue(result["evaluation_skipped"])
             self.assertIn("final_patch", result)
+            self.assertTrue((root / "run/prediction.jsonl").exists())
 
 
 if __name__ == "__main__":

@@ -1,0 +1,23 @@
+{
+  "instance_id": "sphinx-doc__sphinx-8265",
+  "repo": "sphinx-doc/sphinx",
+  "base_commit": "b428cd2404675475a5c3dc2a2b0790ba57676202",
+  "version": "3.3",
+  "difficulty": "15 min - 1 hour",
+  "language": "Python",
+  "split": "test",
+  "datasets": ["princeton-nlp/SWE-bench_Verified"],
+  "problem_statement_file": "problem_statement.md",
+  "gold_patch_file": "gold.patch",
+  "test_patch_file": "test.patch",
+  "gold_patch_files": ["sphinx/pycode/ast.py"],
+  "gold_patch_lines": {"additions": 16, "deletions": 2},
+  "test_patch_files": ["tests/test_pycode_ast.py"],
+  "test_metadata": {
+    "fail_to_pass": ["tests/test_pycode_ast.py::test_unparse[(1, 2, 3)-(1, 2, 3)]"],
+    "pass_to_pass_source": "official SWE-bench_Verified row; not duplicated in rollout context"
+  },
+  "pytest_command": "python -m pytest tests/test_pycode_ast.py -q",
+  "selection_reason": "Different repository from the other two selections; the fix is confined to the Python AST unparser and one parameterized regression case.",
+  "known_environment_limits": "The historical Sphinx checkout may need old documentation-test dependencies; the focused AST test is local and does not need a browser or external service."
+}
