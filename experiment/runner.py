@@ -35,31 +35,28 @@ Call only one tool per response. Never batch or parallelize tool calls.
 Wait for the tool result before choosing the next action.
 Do not output a plain-text response without a tool call. Text outside a tool call does not complete the task, and ordinary text cannot end the task.
 Only a call to the finish tool indicates completion. Call finish only after the repository modification has actually been implemented, the final diff has been checked, and relevant tests have been run when practical.""",
-    "restricted_python": """STRICT RESPONSE FORMAT
+    "restricted_python": """STRICT ACTION FORMAT
 
-Output ONLY raw restricted Python source code.
+Output one raw restricted Python action and nothing else.
 Do NOT output explanations.
 Do NOT output Markdown.
 Do NOT use ``` code fences.
-Do NOT write text before or after the program.
-Every assistant response is interpreted directly as one restricted Python program.
+Every assistant response is interpreted directly as one executable action.
 
-LEGAL COMPLETE ASSISTANT RESPONSE EXAMPLE
+PURPOSE
+
+This is a short orchestration language for the provided repository and process capabilities, not a general-purpose Python environment. One action may execute zero or more Backend calls sequentially. Calls run in source order and their aggregated observation is returned after the action.
+
+Use local variables only for Backend responses or simple literals. Use minimal `if` conditions only to decide whether a later Backend call executes. Do not analyze returned file contents inside the action. Read the aggregated observation, reason in the next model turn, then output the next action. Local variables do not persist across actions; repository changes do.
+
+LEGAL ACTION EXAMPLES
+
+r1 = repo.read_file("example.py")
+r2 = repo.search_text("Example", path=".")
 
 r = repo.read_file("example.py")
 if r["ok"]:
-    content = r["result"]["content"]
-
-INVALID RESPONSES
-
-- Prose such as "Let me inspect the file"
-- Markdown code fences
-- Prose followed by Python
-- Multiple separately fenced snippets
-
-One response is one restricted Python program. A program may execute zero or more Backend calls in sequence, in program order. Local variables exist only in the current response. Repository changes persist across responses.
-
-Each Backend call returns a dictionary. `response["ok"]` is a boolean and `response["status"]` is `success`, `error`, or `denied`. Successful calls include `response["result"]`; failed or denied calls include `response["error"]`.
+    d = repo.git_diff()
 
 CAPABILITIES
 
@@ -72,11 +69,17 @@ repo.git_diff(path=".", staged=False)
 runner.run_process(argv, timeout_seconds=300)
 finish("done")
 
-SUPPORTED SYNTAX
+BACKEND RESPONSES
 
-Strings, integers, booleans, None, lists, tuples, dictionaries, assignment to one local name, subscript access, if, and `for ... in range(...)`. Comparisons: `==`, `!=`, `in`, `not in`, `<`, `<=`, `>`, `>=`. Boolean operations: `and`, `or`. Unary operations: `not`, integer negation. Addition is supported.
+Every capability call goes through the canonical Backend and permission policy and returns a dictionary. `response["ok"]` is a boolean. `response["status"]` is `success`, `error`, or `denied`. Successful calls include `response["result"]`; failed or denied calls include `response["error"]`.
 
-Use only capability calls through `repo.` or `runner.`. Do not use imports, function or class definitions, arbitrary built-ins, object methods, attribute access, or direct file, process, network, or Git APIs. Bare capability calls such as `read_file(...)` are invalid. Completion must be exactly `finish("done")`, as the program's only statement.""",
+MINIMAL LOCAL SYNTAX
+
+Strings, integers, booleans, None, list/tuple/dictionary literals, assignment to one local name, subscript access, `if`, comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`), and `and`, `or`, `not`.
+
+Use only capability calls through `repo.` or `runner.`. Do NOT use general Python data processing or methods such as `split`, `find`, `startswith`, `endswith`, `replace`, `append`, or `insert`. Do NOT use `len`, `enumerate`, `print`, `for`, `while`, `break`, `continue`, `pass`, imports, arbitrary built-ins, or object methods. Do NOT use `open`, `Path`/`pathlib`, `os`, `subprocess`, `socket`, `requests`, `glob`, `shutil`, `tempfile`, `eval`, `exec`, `compile`, or `__import__`. Bare capability calls such as `read_file(...)` are invalid.
+
+Canonical format is raw restricted Python. Multiple code fences, malformed fences, prose, and ambiguous executable snippets are invalid. Completion must be exactly `finish("done")`, as the action's only statement.""",
 }
 
 

@@ -13,8 +13,11 @@ from experiment.interfaces import ActionResult, observation
 
 CAPABILITIES = {"repo": OPERATIONS - {"run_process"}, "runner": {"run_process"}}
 KNOWN_CAPABILITY_NAMES = set().union(*CAPABILITIES.values())
-UNSAFE_FUNCTION_NAMES = {"open", "exec", "eval", "compile", "__import__"}
-UNSAFE_MODULE_NAMES = {"os", "subprocess", "socket", "pathlib", "shutil", "tempfile", "urllib", "http"}
+UNSAFE_FUNCTION_NAMES = {"open", "exec", "eval", "compile", "__import__", "Path"}
+UNSAFE_MODULE_NAMES = {
+    "os", "subprocess", "socket", "pathlib", "shutil", "tempfile",
+    "urllib", "http", "requests", "glob",
+}
 
 
 class RestrictedPythonError(ValueError):
@@ -83,13 +86,15 @@ _STANDALONE_FINISH_CALL = re.compile(
     r"^[ \t]*finish[ \t]*\(.*\)[ \t]*\r?$",
     re.MULTILINE,
 )
+
+
 class Validator(ast.NodeVisitor):
     allowed = (
-        ast.Module, ast.Expr, ast.Assign, ast.If, ast.For, ast.Constant, ast.List,
+        ast.Module, ast.Expr, ast.Assign, ast.If, ast.Constant, ast.List,
         ast.Tuple, ast.Dict, ast.Name, ast.Load, ast.Store, ast.Subscript,
-        ast.BoolOp, ast.And, ast.Or, ast.UnaryOp, ast.Not, ast.USub,
-        ast.BinOp, ast.Add, ast.Compare, ast.Eq, ast.NotEq, ast.In, ast.NotIn,
-        ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.Call, ast.Attribute, ast.keyword,
+        ast.BoolOp, ast.And, ast.Or, ast.UnaryOp, ast.Not,
+        ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+        ast.Call, ast.Attribute, ast.keyword,
     )
 
     def generic_visit(self, node: ast.AST) -> None:
@@ -160,31 +165,14 @@ class Validator(ast.NodeVisitor):
                 raise RestrictedPythonError("expanded keyword arguments are not allowed")
             self.visit(keyword.value)
 
-    def visit_For(self, node: ast.For) -> None:
-        if node.orelse or not isinstance(node.target, ast.Name):
-            raise RestrictedPythonError("for must bind one name and cannot use else")
-        if not (
-            isinstance(node.iter, ast.Call) and isinstance(node.iter.func, ast.Name)
-            and node.iter.func.id == "range" and not node.iter.keywords
-            and 1 <= len(node.iter.args) <= 3
-        ):
-            raise RestrictedPythonError("for loops require range")
-        self.visit(node.target)
-        for value in node.iter.args:
-            self.visit(value)
-        for statement in node.body:
-            self.visit(statement)
-
 
 class Interpreter:
-    def __init__(self, backend: Backend, action_id: str, loop_limit: int = 1000) -> None:
+    def __init__(self, backend: Backend, action_id: str) -> None:
         self.backend = backend
         self.action_id = action_id
-        self.loop_limit = loop_limit
         self.locals: dict[str, Any] = {}
         self.responses: list[dict[str, Any]] = []
         self.finished = False
-        self.loop_iterations = 0
 
     def run(self, tree: ast.Module) -> None:
         self.statements(tree.body)
@@ -199,23 +187,8 @@ class Interpreter:
                 self.expression(statement.value)
             elif isinstance(statement, ast.If):
                 self.statements(statement.body if self.expression(statement.test) else statement.orelse)
-            elif isinstance(statement, ast.For):
-                values = self.range_values(statement.iter)
-                for value in values:
-                    self.locals[statement.target.id] = value
-                    self.statements(statement.body)
             else:
                 raise RestrictedPythonError(f"statement is not allowed: {type(statement).__name__}")
-
-    def range_values(self, call: ast.Call) -> range:
-        values = [self.expression(value) for value in call.args]
-        if any(type(value) is not int for value in values):
-            raise RestrictedPythonError("range arguments must be integers")
-        result = range(*values)
-        self.loop_iterations += len(result)
-        if self.loop_iterations > self.loop_limit:
-            raise RestrictedPythonError("loop iteration limit exceeded")
-        return result
 
     def expression(self, node: ast.expr) -> Any:
         if isinstance(node, ast.Constant) and isinstance(node.value, (str, int, bool, type(None))):
@@ -238,10 +211,6 @@ class Interpreter:
             value = self.expression(node.operand)
             if isinstance(node.op, ast.Not):
                 return not value
-            if isinstance(node.op, ast.USub) and type(value) is int:
-                return -value
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-            return operator.add(self.expression(node.left), self.expression(node.right))
         if isinstance(node, ast.Compare):
             return self.compare(node)
         if isinstance(node, ast.Call):
@@ -252,8 +221,6 @@ class Interpreter:
         functions = {
             ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.Lt: operator.lt,
             ast.LtE: operator.le, ast.Gt: operator.gt, ast.GtE: operator.ge,
-            ast.In: lambda left, right: left in right,
-            ast.NotIn: lambda left, right: left not in right,
         }
         left = self.expression(node.left)
         for operation, comparator in zip(node.ops, node.comparators):

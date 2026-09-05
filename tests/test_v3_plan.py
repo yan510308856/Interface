@@ -10,6 +10,7 @@ from experiment.runner import build_experiment_plan, load_config
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs/experiment_v3_qwen_protocol_three_small_tasks.yaml"
+V3_2_CONFIG = ROOT / "configs/experiment_v3_2_qwen_orchestration_three_small_tasks.yaml"
 
 
 class V3PlanTests(unittest.TestCase):
@@ -44,6 +45,28 @@ class V3PlanTests(unittest.TestCase):
             self.assertNotIn("sha256", placement.as_dict())
             self.assertNotIn("gold_patch", placement.as_dict())
             self.assertNotIn("test_patch", placement.as_dict())
+
+    def test_v3_2_plan_is_exactly_the_same_36_cells(self):
+        config = load_config(V3_2_CONFIG)
+        self.assertEqual("harness-v3-2-qwen-orchestration-three-small-tasks", config["experiment_id"])
+        self.assertEqual("qwen-orchestration-v3.2", config["prompt_protocol_version"])
+        plan = build_experiment_plan(config)
+        self.assertEqual(36, len(plan))
+        self.assertEqual(3, len({item.instance_id for item in plan}))
+        for instance_id in {item.instance_id for item in plan}:
+            self.assertEqual(12, sum(item.instance_id == instance_id for item in plan))
+
+    def test_v3_2_changes_only_protocol_identity_from_v3_1_config(self):
+        old = load_config(CONFIG)
+        new = load_config(V3_2_CONFIG)
+        versioned = {
+            "experiment_name", "experiment_id", "harness_version",
+            "prompt_protocol_version", "interface_prompt_version",
+        }
+        self.assertEqual(
+            {key: value for key, value in old.items() if key not in versioned},
+            {key: value for key, value in new.items() if key not in versioned},
+        )
 
 
 if __name__ == "__main__":

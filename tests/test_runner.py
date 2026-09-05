@@ -152,40 +152,31 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("Make the smallest correct repository change", atomic)
 
         restricted = runner.INTERFACE_PROMPTS["restricted_python"]
-        self.assertTrue(restricted.startswith("STRICT RESPONSE FORMAT\n"))
+        self.assertTrue(restricted.startswith("STRICT ACTION FORMAT\n"))
         for rule in (
-            "Output ONLY raw restricted Python source code",
+            "Output one raw restricted Python action and nothing else",
             "Do NOT output explanations",
             "Do NOT output Markdown",
             "Do NOT use ``` code fences",
-            "Do NOT write text before or after the program",
         ):
             self.assertIn(rule, restricted)
-        example = restricted.split(
-            "LEGAL COMPLETE ASSISTANT RESPONSE EXAMPLE\n\n", 1,
-        )[1].split("\n\nINVALID RESPONSES", 1)[0]
-        self.assertEqual(
-            'r = repo.read_file("example.py")\n'
-            'if r["ok"]:\n'
-            '    content = r["result"]["content"]',
-            example,
-        )
-        self.assertNotIn("```", example)
-        for invalid_example in (
-            'Prose such as "Let me inspect the file"',
-            "Markdown code fences",
-            "Prose followed by Python",
-            "Multiple separately fenced snippets",
-        ):
-            self.assertIn(invalid_example, restricted)
-        self.assertIn("A program may execute zero or more Backend calls in sequence", restricted)
-        self.assertIn("in program order", restricted)
+        examples = restricted.split("LEGAL ACTION EXAMPLES\n\n", 1)[1].split("\n\nCAPABILITIES", 1)[0]
+        self.assertIn('r1 = repo.read_file("example.py")', examples)
+        self.assertIn('r2 = repo.search_text("Example", path=".")', examples)
+        self.assertIn('if r["ok"]:\n    d = repo.git_diff()', examples)
+        self.assertNotIn("```", examples)
+        self.assertIn("short orchestration language", restricted)
+        self.assertIn("not a general-purpose Python environment", restricted)
+        self.assertIn("One action may execute zero or more Backend calls sequentially", restricted)
+        self.assertIn("Calls run in source order", restricted)
+        self.assertIn("aggregated observation", restricted)
         self.assertIn("response[\"ok\"]", restricted)
         self.assertIn("response[\"status\"]", restricted)
         self.assertIn("response[\"result\"]", restricted)
         self.assertIn("response[\"error\"]", restricted)
-        self.assertIn("Local variables exist only in the current response", restricted)
-        self.assertIn("Repository changes persist across responses", restricted)
+        self.assertIn("Local variables do not persist across actions", restricted)
+        self.assertIn("repository changes do", restricted)
+        self.assertIn("reason in the next model turn", restricted)
         self.assertIn("repo.read_file(path, start_line=1, end_line=None)", restricted)
         self.assertIn("runner.run_process(argv, timeout_seconds=300)", restricted)
         self.assertIn("r = repo.read_file(\"example.py\")", restricted)
@@ -198,12 +189,19 @@ class RunnerTests(unittest.TestCase):
             "runner.run_process(argv, timeout_seconds=300)", 'finish("done")',
         ):
             self.assertIn(capability, restricted)
-        self.assertIn("Do not use imports", restricted)
+        for forbidden in (
+            "split", "find", "startswith", "endswith", "replace", "append", "insert",
+            "len", "enumerate", "print", "for", "while", "break", "continue", "pass", "imports",
+            "open", "Path", "pathlib", "os", "subprocess", "socket", "requests", "glob",
+            "shutil", "tempfile", "eval", "exec", "compile", "__import__",
+        ):
+            self.assertIn(forbidden, restricted)
         self.assertIn("Bare capability calls such as `read_file(...)` are invalid", restricted)
         self.assertIn('Completion must be exactly `finish("done")`', restricted)
+        self.assertIn("Every capability call goes through the canonical Backend and permission policy", restricted)
 
         final_prompt = runner._system_prompt("restricted_python")
-        self.assertTrue(final_prompt.startswith("STRICT RESPONSE FORMAT\n"))
+        self.assertTrue(final_prompt.startswith("STRICT ACTION FORMAT\n"))
         self.assertIn("\n\nTASK OBJECTIVE\n\n" + runner.COMMON_PROMPT, final_prompt)
         self.assertEqual(
             runner.COMMON_PROMPT + "\n" + runner.INTERFACE_PROMPTS["atomic"],
