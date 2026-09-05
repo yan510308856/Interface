@@ -226,19 +226,96 @@ finish("done")""",
         self.assertEqual(1, self.backend.operation_count)
         self.assertFalse(result.responses[0]["ok"])
 
-    def test_general_python_computation_is_rejected(self):
+    def test_v5_pure_local_computation_drives_backend_call(self):
+        source = (
+            'text = "  Alpha beta  "\n'
+            'prefix = text[2:7]\n'
+            'parts = text.strip().split()\n'
+            'if "Alpha" in text and "Gamma" not in text:\n'
+            '    if prefix == "Alpha" and text.find("beta") >= 0:\n'
+            '        if text.startswith("  ") and text.endswith("  ") and len(parts) == 2:\n'
+            '            d = repo.git_diff()'
+        )
+        result = execute_action(source, self.backend, "pure")
+        self.assertEqual("ok", result.status)
+        self.assertEqual(["git_diff"], [item["operation"] for item in result.responses])
+
+    def test_v5_range_enumerate_min_max_mutation_and_control_flow(self):
+        source = (
+            'items = []\n'
+            'items.append("b")\n'
+            'items.insert(0, "a")\n'
+            'low = min([3, 1, 2])\n'
+            'high = max([3, 1, 2])\n'
+            'for i, item in enumerate(items):\n'
+            '    if i == 0:\n'
+            '        continue\n'
+            '    if i == 2:\n'
+            '        break\n'
+            '    if item == "b" and low + 2 == high:\n'
+            '        d = repo.git_diff()\n'
+            'for j in range(1, 3):\n'
+            '    if j == 2:\n'
+            '        break'
+        )
+        result = execute_action(source, self.backend, "pure-loop")
+        self.assertEqual("ok", result.status)
+        self.assertEqual(1, self.backend.operation_count)
+
+    def test_v5_backend_result_processing_and_multi_operation_order(self):
+        source = (
+            'r = repo.search_text("VALUE", path=".")\n'
+            'if r["ok"] and r["result"]["matches"]:\n'
+            '    for match in r["result"]["matches"]:\n'
+            '        p = match["path"]\n'
+            '        f = repo.read_file(p)\n'
+            '        if f["ok"]:\n'
+            '            text = f["result"]["content"]\n'
+            '            if "VALUE" in text and text.find("VALUE") >= 0:\n'
+            '                d = repo.git_diff()'
+        )
+        original_check = self.backend.permission.check
+        self.backend.permission.check = Mock(wraps=original_check)
+        result = execute_action(source, self.backend, "processed")
+        self.assertEqual("ok", result.status)
+        self.assertEqual(["search_text", "read_file", "git_diff"], [
+            item["operation"] for item in result.responses
+        ])
+        self.assertEqual(3, self.backend.permission.check.call_count)
+
+    def test_v5_reassignment_nested_subscripts_and_index_arithmetic(self):
+        source = (
+            'data = {"outer": {"items": ["zero", "one", "two"]}}\n'
+            'data = data["outer"]\n'
+            'items = data["items"]\n'
+            'index = 1 - 0\n'
+            'item = items[index]\n'
+            'if item == "one" and items[0:2] == ["zero", "one"]:\n'
+            '    d = repo.git_diff()'
+        )
+        result = execute_action(source, self.backend, "reassigned")
+        self.assertEqual("ok", result.status)
+        self.assertEqual(1, self.backend.operation_count)
+
+    def test_v5_operation_budget_is_still_enforced(self):
+        self.backend.max_operations = 1
+        result = execute_action(
+            'repo.git_diff()\nrepo.git_diff()', self.backend, "budget",
+        )
+        self.assertEqual("ok", result.status)
+        self.assertEqual(2, self.backend.operation_count)
+        self.assertEqual(["success", "error"], [item["status"] for item in result.responses])
+
+    def test_general_python_computation_not_in_v5_subset_is_rejected(self):
         for source in (
-            '"a" + "b"', '"a" in "abc"', '-1',
-            'content = "a\\nb"\ncontent.split("\\n")',
-            'content = "abc"\ncontent.find("b")',
-            'content = "abc"\ncontent.startswith("a")',
-            'content = "abc"\ncontent.endswith("c")',
             'content = "abc"\ncontent.replace("a", "b")',
-            'items = []\nitems.append("x")',
-            'items = []\nitems.insert(0, "x")',
-            'len([1])', 'enumerate([1])', 'print("x")',
-            'for i in range(1):\n    repo.git_diff()',
+            'items = []\nitems.pop()',
+            'len([1])\nprint("x")',
+            'for i in range(1):\n    pass',
             'while True:\n    break', 'break', 'continue', 'pass',
+            'sum([1])', 'sorted([1])', 'try:\n    pass\nexcept Exception:\n    pass',
+            'def f():\n    pass', 'lambda x: x', '[x for x in [1]]',
+            '"abc".upper()', 'data = {}\ndata.get("x")',
             "foo()", "m.some_model()", "separability_matrix()",
             'replace_text("sample.py", "1", "2")', "git_diff()",
         ):
@@ -255,6 +332,9 @@ finish("done")""",
             'shutil.copy("a", "b")', 'tempfile.mkstemp()', 'requests.get("https://example.com")',
             'glob.glob("*")', 'repo.unknown_operation()',
             'runner.unknown_operation()', 'm._private()',
+            'sys.exit()', 'inspect.getsource("x")', 'globals()', 'locals()',
+            'vars()', 'getattr(data, "x")', 'setattr(data, "x", 1)',
+            'delattr(data, "x")', 'hasattr(data, "x")', 'type(data)', 'object()',
         )
         for forbidden in forbidden_sources:
             result = execute_action(forbidden, self.backend, "bad")
@@ -264,6 +344,18 @@ finish("done")""",
         self.assertEqual("invalid", syntax_error.status)
         self.assertFalse(syntax_error.unsafe_attempt)
         self.assertEqual(0, self.backend.operation_count)
+
+    def test_v5_advanced_runtime_constructs_are_rejected(self):
+        for source in (
+            'with repo.read_file("sample.py") as value:\n    pass',
+            'raise ValueError("x")',
+            'async def f():\n    await repo.git_diff()',
+            'class Example:\n    pass',
+            'yield 1',
+        ):
+            result = execute_action(source, self.backend, "advanced")
+            self.assertEqual("invalid", result.status)
+            self.assertEqual(0, self.backend.operation_count)
 
     def test_locals_reset_but_repository_changes_persist_between_responses(self):
         edited = execute_action(

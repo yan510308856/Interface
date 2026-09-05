@@ -30,11 +30,18 @@ RESTRICTED_PYTHON_TOOLS = [{
         },
     },
 }]
-UNSAFE_FUNCTION_NAMES = {"open", "exec", "eval", "compile", "__import__", "Path"}
+UNSAFE_FUNCTION_NAMES = {
+    "open", "exec", "eval", "compile", "__import__", "Path", "globals", "locals", "vars",
+    "getattr", "setattr", "delattr", "hasattr", "type", "object",
+}
 UNSAFE_MODULE_NAMES = {
     "os", "subprocess", "socket", "pathlib", "shutil", "tempfile",
-    "urllib", "http", "requests", "glob",
+    "urllib", "http", "requests", "glob", "sys", "inspect",
 }
+PURE_BUILTINS = {"len", "range", "enumerate", "min", "max"}
+PURE_STRING_METHODS = {"find", "startswith", "endswith", "strip", "split"}
+PURE_LIST_METHODS = {"append", "insert"}
+MAX_LOCAL_ITERATIONS = 10_000
 
 
 class RestrictedPythonError(ValueError):
@@ -107,12 +114,17 @@ _STANDALONE_FINISH_CALL = re.compile(
 
 class Validator(ast.NodeVisitor):
     allowed = (
-        ast.Module, ast.Expr, ast.Assign, ast.If, ast.Constant, ast.List,
+        ast.Module, ast.Expr, ast.Assign, ast.If, ast.For, ast.Break, ast.Continue,
+        ast.Constant, ast.List,
         ast.Tuple, ast.Dict, ast.Name, ast.Load, ast.Store, ast.Subscript,
         ast.BoolOp, ast.And, ast.Or, ast.UnaryOp, ast.Not,
-        ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+        ast.USub, ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+        ast.In, ast.NotIn, ast.BinOp, ast.Add, ast.Sub, ast.Slice,
         ast.Call, ast.Attribute, ast.keyword,
     )
+
+    def __init__(self) -> None:
+        self.loop_depth = 0
 
     def generic_visit(self, node: ast.AST) -> None:
         if not isinstance(node, self.allowed):
@@ -131,6 +143,45 @@ class Validator(ast.NodeVisitor):
             raise RestrictedPythonError("assignment target must be one local name")
         self.generic_visit(node)
 
+    def visit_For(self, node: ast.For) -> None:
+        if node.orelse:
+            raise RestrictedPythonError("for else is not allowed")
+        self._visit_loop_target(node.target)
+        self.visit(node.iter)
+        self.loop_depth += 1
+        try:
+            for statement in node.body:
+                self.visit(statement)
+        finally:
+            self.loop_depth -= 1
+
+    def _visit_loop_target(self, node: ast.AST) -> None:
+        if isinstance(node, ast.Name):
+            self.visit(node)
+            return
+        if isinstance(node, (ast.Tuple, ast.List)) and all(
+            isinstance(element, ast.Name) for element in node.elts
+        ):
+            for element in node.elts:
+                self.visit(element)
+            return
+        raise RestrictedPythonError("for target must be local name(s)")
+
+    def visit_Break(self, node: ast.Break) -> None:
+        if not self.loop_depth:
+            raise RestrictedPythonError("break is only allowed inside for")
+
+    def visit_Continue(self, node: ast.Continue) -> None:
+        if not self.loop_depth:
+            raise RestrictedPythonError("continue is only allowed inside for")
+
+    def visit_BinOp(self, node: ast.BinOp) -> None:
+        if not isinstance(node.op, (ast.Add, ast.Sub)):
+            raise RestrictedPythonError("only string or integer + and - are allowed")
+        self.visit(node.left)
+        self.visit(node.op)
+        self.visit(node.right)
+
     def visit_Attribute(self, node: ast.Attribute) -> None:
         raise RestrictedPythonError(
             "attribute access is allowed only in capability calls",
@@ -146,12 +197,16 @@ class Validator(ast.NodeVisitor):
                 and node.args[0].value == "done"
             ):
                 raise RestrictedPythonError('completion must be exactly finish("done")')
+        elif isinstance(node.func, ast.Name) and node.func.id in PURE_BUILTINS:
+            pass
         elif isinstance(node.func, ast.Name) and node.func.id in KNOWN_CAPABILITY_NAMES:
             raise RestrictedPythonError("capability calls must use their namespace")
         elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
             namespace = node.func.value.id
             if node.func.attr in CAPABILITIES.get(namespace, set()):
                 pass
+            elif node.func.attr in PURE_STRING_METHODS | PURE_LIST_METHODS:
+                self.visit(node.func.value)
             else:
                 unsafe = (
                     namespace in CAPABILITIES
@@ -160,9 +215,11 @@ class Validator(ast.NodeVisitor):
                     or node.func.attr.startswith("_")
                 )
                 raise RestrictedPythonError("capability method is not allowed", unsafe_attempt=unsafe)
+        elif isinstance(node.func, ast.Attribute) and node.func.attr in PURE_STRING_METHODS | PURE_LIST_METHODS:
+            self.visit(node.func.value)
         elif isinstance(node.func, ast.Attribute):
             raise RestrictedPythonError(
-                "only capability calls and finish are allowed",
+                "only capability calls and approved pure methods are allowed",
                 unsafe_attempt=(
                     _attribute_root_name(node.func) in CAPABILITIES
                     or _attribute_root_name(node.func) in UNSAFE_MODULE_NAMES
@@ -190,6 +247,7 @@ class Interpreter:
         self.locals: dict[str, Any] = {}
         self.responses: list[dict[str, Any]] = []
         self.finished = False
+        self.local_iterations = 0
 
     def run(self, tree: ast.Module) -> None:
         self.statements(tree.body)
@@ -204,6 +262,25 @@ class Interpreter:
                 self.expression(statement.value)
             elif isinstance(statement, ast.If):
                 self.statements(statement.body if self.expression(statement.test) else statement.orelse)
+            elif isinstance(statement, ast.For):
+                values = self.expression(statement.iter)
+                if not isinstance(values, (list, tuple, range, str)):
+                    raise RestrictedPythonError("for iterable must be a list, tuple, range, or string")
+                for value in values:
+                    self.local_iterations += 1
+                    if self.local_iterations > MAX_LOCAL_ITERATIONS:
+                        raise RestrictedPythonError("local iteration limit exceeded")
+                    try:
+                        self.assign_target(statement.target, value)
+                        self.statements(statement.body)
+                    except _ContinueSignal:
+                        continue
+                    except _BreakSignal:
+                        break
+            elif isinstance(statement, ast.Break):
+                raise _BreakSignal
+            elif isinstance(statement, ast.Continue):
+                raise _ContinueSignal
             else:
                 raise RestrictedPythonError(f"statement is not allowed: {type(statement).__name__}")
 
@@ -220,14 +297,39 @@ class Interpreter:
                 raise RestrictedPythonError(f"unknown local name: {node.id}")
             return self.locals[node.id]
         if isinstance(node, ast.Subscript):
-            return self.expression(node.value)[self.expression(node.slice)]
+            return self.expression(node.value)[self.subscript(node.slice)]
         if isinstance(node, ast.BoolOp):
-            values = [bool(self.expression(value)) for value in node.values]
-            return all(values) if isinstance(node.op, ast.And) else any(values)
+            if isinstance(node.op, ast.And):
+                result: Any = None
+                for value in node.values:
+                    result = self.expression(value)
+                    if not result:
+                        return result
+                return result
+            result = None
+            for value in node.values:
+                result = self.expression(value)
+                if result:
+                    return result
+            return result
         if isinstance(node, ast.UnaryOp):
             value = self.expression(node.operand)
             if isinstance(node.op, ast.Not):
                 return not value
+            if isinstance(node.op, ast.USub) and type(value) is int:
+                return -value
+            raise RestrictedPythonError("only not and integer negation are allowed")
+        if isinstance(node, ast.BinOp):
+            left = self.expression(node.left)
+            right = self.expression(node.right)
+            if isinstance(node.op, ast.Add):
+                if isinstance(left, str) and isinstance(right, str):
+                    return left + right
+                if type(left) is int and type(right) is int:
+                    return left + right
+            elif isinstance(node.op, ast.Sub) and type(left) is int and type(right) is int:
+                return left - right
+            raise RestrictedPythonError("arithmetic is limited to strings or integers")
         if isinstance(node, ast.Compare):
             return self.compare(node)
         if isinstance(node, ast.Call):
@@ -242,15 +344,33 @@ class Interpreter:
         left = self.expression(node.left)
         for operation, comparator in zip(node.ops, node.comparators):
             right = self.expression(comparator)
-            if not functions[type(operation)](left, right):
+            if isinstance(operation, ast.In):
+                matches = left in right
+            elif isinstance(operation, ast.NotIn):
+                matches = left not in right
+            else:
+                matches = functions[type(operation)](left, right)
+            if not matches:
                 return False
             left = right
         return True
 
     def call(self, node: ast.Call) -> Any:
         if isinstance(node.func, ast.Name):
-            self.finished = True
-            return None
+            if node.func.id == "finish":
+                self.finished = True
+                return None
+            return self.call_builtin(node.func.id, node.args, node.keywords)
+        if node.func.attr in PURE_STRING_METHODS | PURE_LIST_METHODS:
+            receiver = self.expression(node.func.value)
+            arguments = [self.expression(value) for value in node.args]
+            if node.keywords:
+                raise RestrictedPythonError("pure methods do not accept keyword arguments")
+            if isinstance(receiver, str) and node.func.attr in PURE_STRING_METHODS:
+                return self.call_string_method(receiver, node.func.attr, arguments)
+            if isinstance(receiver, list) and node.func.attr in PURE_LIST_METHODS:
+                return self.call_list_method(receiver, node.func.attr, arguments)
+            raise RestrictedPythonError(f"{node.func.attr} requires an approved receiver type")
         operation = node.func.attr
         names = ARGUMENT_ORDER[operation]
         if len(node.args) > len(names):
@@ -263,6 +383,89 @@ class Interpreter:
         response = self.backend.execute(operation, arguments, self.action_id)
         self.responses.append(response)
         return response
+
+    def subscript(self, node: ast.AST) -> Any:
+        if isinstance(node, ast.Slice):
+            def bound(value: ast.expr | None) -> int | None:
+                if value is None:
+                    return None
+                resolved = self.expression(value)
+                if type(resolved) is not int:
+                    raise RestrictedPythonError("slice bounds must be integers")
+                return resolved
+            return slice(bound(node.lower), bound(node.upper), bound(node.step))
+        return self.expression(node)
+
+    def assign_target(self, target: ast.AST, value: Any) -> None:
+        if isinstance(target, ast.Name):
+            self.locals[target.id] = value
+            return
+        if isinstance(target, (ast.Tuple, ast.List)):
+            if not isinstance(value, (tuple, list)) or len(target.elts) != len(value):
+                raise RestrictedPythonError("for target unpacking does not match the value")
+            for element, item in zip(target.elts, value):
+                self.assign_target(element, item)
+            return
+        raise RestrictedPythonError("for target must be local name(s)")
+
+    def call_builtin(self, name: str, nodes: list[ast.expr], keywords: list[ast.keyword]) -> Any:
+        if keywords:
+            raise RestrictedPythonError("pure builtins do not accept keyword arguments")
+        values = [self.expression(node) for node in nodes]
+        if name == "len":
+            if len(values) != 1 or not isinstance(values[0], (str, list, tuple, dict)):
+                raise RestrictedPythonError("len expects one string or container")
+            return len(values[0])
+        if name == "range":
+            if not 1 <= len(values) <= 3 or not all(type(value) is int for value in values):
+                raise RestrictedPythonError("range expects one to three integers")
+            return range(*values)
+        if name == "enumerate":
+            if not 1 <= len(values) <= 2 or not isinstance(values[0], (list, tuple, str)):
+                raise RestrictedPythonError("enumerate expects a sequence and optional integer start")
+            start = values[1] if len(values) == 2 else 0
+            if type(start) is not int:
+                raise RestrictedPythonError("enumerate start must be an integer")
+            return list(enumerate(values[0], start))
+        if name in {"min", "max"}:
+            if len(values) == 1 and isinstance(values[0], (list, tuple, range, str)):
+                values = list(values[0])
+            if not values:
+                raise RestrictedPythonError(f"{name} expects values")
+            return (min if name == "min" else max)(values)
+        raise RestrictedPythonError("unknown pure builtin")
+
+    @staticmethod
+    def call_string_method(value: str, name: str, arguments: list[Any]) -> Any:
+        if name == "find" and 1 <= len(arguments) <= 3:
+            return value.find(*arguments)
+        if name == "startswith" and 1 <= len(arguments) <= 3:
+            return value.startswith(*arguments)
+        if name == "endswith" and 1 <= len(arguments) <= 3:
+            return value.endswith(*arguments)
+        if name == "strip" and len(arguments) <= 1:
+            return value.strip(*arguments)
+        if name == "split" and len(arguments) <= 2:
+            return value.split(*arguments)
+        raise RestrictedPythonError(f"invalid arguments for string method {name}")
+
+    @staticmethod
+    def call_list_method(value: list[Any], name: str, arguments: list[Any]) -> None:
+        if name == "append" and len(arguments) == 1:
+            value.append(arguments[0])
+            return None
+        if name == "insert" and len(arguments) == 2 and type(arguments[0]) is int:
+            value.insert(arguments[0], arguments[1])
+            return None
+        raise RestrictedPythonError(f"invalid arguments for list method {name}")
+
+
+class _BreakSignal(Exception):
+    pass
+
+
+class _ContinueSignal(Exception):
+    pass
 
 
 def execute_code(source: str, backend: Backend, action_id: str) -> ActionResult:

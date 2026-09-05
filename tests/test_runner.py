@@ -188,10 +188,15 @@ class RunnerTests(unittest.TestCase):
         restricted = runner.INTERFACE_PROMPTS["restricted_python"]
         self.assertTrue(restricted.startswith("Use exactly one `execute_restricted_python` action tool"))
         for rule in (
-            "Put one short restricted orchestration program in the tool's `code` field",
+            "Put one restricted program in the tool's `code` field",
             "Do not respond with plain text",
             "aggregated observation",
             "perform further reasoning in the next turn",
+            "Limited pure, side-effect-free in-memory computation",
+            "indexing/slicing",
+            "len`/`range`/`enumerate`/`min`/`max",
+            "find`/`startswith`/`endswith`/`strip`/`split",
+            "append`/`insert",
         ):
             self.assertIn(rule, restricted)
         examples = restricted.split("LEGAL ACTION EXAMPLES\n\n", 1)[1].split("\n\nCAPABILITIES", 1)[0]
@@ -199,7 +204,7 @@ class RunnerTests(unittest.TestCase):
         self.assertIn('r2 = repo.search_text("Example", path=".")', examples)
         self.assertIn('if r["ok"]:\n    d = repo.git_diff()', examples)
         self.assertNotIn("```", examples)
-        self.assertIn("operation-orchestration language", restricted)
+        self.assertIn("small orchestration language", restricted)
         self.assertIn("not a general-purpose Python environment", restricted)
         self.assertIn("program may sequentially call zero or more canonical Backend capabilities", restricted)
         self.assertIn("aggregated observation", restricted)
@@ -230,6 +235,8 @@ class RunnerTests(unittest.TestCase):
             self.assertIn(forbidden, restricted)
         self.assertIn("Bare capability calls such as `read_file(...)` are invalid", restricted)
         self.assertIn('code containing exactly `finish("done")`', restricted)
+        for forbidden in ("while", "print", "arbitrary built-ins", "arbitrary methods", "comprehensions", "try/except"):
+            self.assertIn(forbidden, restricted)
 
         final_prompt = runner._system_prompt("restricted_python")
         self.assertTrue(final_prompt.startswith("Use exactly one `execute_restricted_python` action tool"))
