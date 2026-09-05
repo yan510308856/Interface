@@ -1,0 +1,15 @@
+{
+  "instance_id": "astropy__astropy-12907",
+  "repo": "astropy/astropy",
+  "base_commit": "d16bfe05a744909de4b27f5875fe0d4ed41ce607",
+  "version": "4.3",
+  "difficulty": "15 min - 1 hour",
+  "language": "Python",
+  "split": "test",
+  "datasets": ["princeton-nlp/SWE-bench_Verified"],
+  "gold_patch_file": "gold.patch",
+  "test_metadata": {"fail_to_pass": ["astropy/modeling/tests/test_separable.py::test_separability_matrix"]},
+  "pytest_command": "python -m pytest astropy/modeling/tests/test_separable.py -q",
+  "selection_reason": "Retained baseline task; localized production change in astropy/modeling/separable.py.",
+  "known_environment_limits": "Astropy has a substantial dependency surface; this matrix uses source preparation only and does not run its test suite."
+}

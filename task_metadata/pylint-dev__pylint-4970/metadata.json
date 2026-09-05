@@ -1,0 +1,15 @@
+{
+  "instance_id": "pylint-dev__pylint-4970",
+  "repo": "pylint-dev/pylint",
+  "base_commit": "40cc2ffd7887959157aaf469e09585ec2be7f528",
+  "version": "2.10",
+  "difficulty": "<15 min fix",
+  "language": "Python",
+  "split": "test",
+  "datasets": ["princeton-nlp/SWE-bench_Verified"],
+  "gold_patch_file": "gold.patch",
+  "test_metadata": {"fail_to_pass": ["tests/checkers/unittest_similar.py::test_set_duplicate_lines_to_zero"]},
+  "pytest_command": "python -m pytest tests/checkers/unittest_similar.py -q",
+  "selection_reason": "Two-line early-return change in pylint/checkers/similar.py; deterministic CLI checker behavior without network or external services.",
+  "known_environment_limits": "Historical Pylint checkout may need compatible plugin/version dependencies; source preparation only is used here."
+}

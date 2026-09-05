@@ -1,0 +1,15 @@
+{
+  "instance_id": "astropy__astropy-14309",
+  "repo": "astropy/astropy",
+  "base_commit": "cdb66059a2feb44ee49021874605ba90801f9986",
+  "version": "5.1",
+  "difficulty": "<15 min fix",
+  "language": "Python",
+  "split": "test",
+  "datasets": ["princeton-nlp/SWE-bench_Verified"],
+  "gold_patch_file": "gold.patch",
+  "test_metadata": {"fail_to_pass": ["astropy/io/fits/tests/test_connect.py::test_is_fits_gh_14305"]},
+  "pytest_command": "python -m pytest astropy/io/fits/tests/test_connect.py -q",
+  "selection_reason": "Single production Python file, five-line edit, and a deterministic FITS-format edge case without network or service dependencies.",
+  "known_environment_limits": "Astropy has a substantial dependency surface; source preparation validates checkout and placement only."
+}
