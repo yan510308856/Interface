@@ -15,6 +15,7 @@ V4_CONFIG = ROOT / "configs/experiment_v4_structured_python_three_small_tasks.ya
 V5_CONFIG = ROOT / "configs/experiment_v5_structured_python_local_compute_three_small_tasks.yaml"
 V5_1_CONFIG = ROOT / "configs/experiment_v5_1_structured_python_validation_feedback_three_small_tasks.yaml"
 V6_CONFIG = ROOT / "configs/experiment_v6_python_batch_three_small_tasks.yaml"
+V6_1_CONFIG = ROOT / "configs/experiment_v6_1_python_batch_prompt_calibration.yaml"
 
 
 class V3PlanTests(unittest.TestCase):
@@ -152,6 +153,26 @@ class V3PlanTests(unittest.TestCase):
         self.assertEqual(36, len({
             (item.instance_id, item.interface, item.condition, item.seed) for item in plan
         }))
+        for instance_id in {item.instance_id for item in plan}:
+            self.assertEqual(12, sum(item.instance_id == instance_id for item in plan))
+
+    def test_v6_1_prompt_calibration_only_changes_version_identity(self):
+        old = load_config(V6_CONFIG)
+        new = load_config(V6_1_CONFIG)
+        self.assertEqual("harness-v6-1-python-batch-prompt-calibration", new["experiment_id"])
+        self.assertEqual("python-batch-prompt-calibration-v6.1", new["prompt_protocol_version"])
+        versioned = {
+            "experiment_name", "experiment_id", "harness_version",
+            "prompt_protocol_version", "interface_prompt_version",
+        }
+        self.assertEqual(
+            {key: value for key, value in old.items() if key not in versioned},
+            {key: value for key, value in new.items() if key not in versioned},
+        )
+        plan_config = json.loads(json.dumps(new))
+        plan_config["task"]["require_prepared_sources"] = False
+        plan = build_experiment_plan(plan_config)
+        self.assertEqual(36, len(plan))
         for instance_id in {item.instance_id for item in plan}:
             self.assertEqual(12, sum(item.instance_id == instance_id for item in plan))
 

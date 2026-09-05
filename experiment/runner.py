@@ -35,11 +35,15 @@ Call only one tool per response. Never batch or parallelize tool calls.
 Wait for the tool result before choosing the next action.
 Do not output a plain-text response without a tool call. Text outside a tool call does not complete the task, and ordinary text cannot end the task.
 Only a call to the finish tool indicates completion. Call finish only after the repository modification has actually been implemented, the final diff has been checked, and relevant tests have been run when practical.""",
-    "restricted_python": """Use a batch operation interface.
+    "restricted_python": """You use a batch operation interface for repository work.
 
-Each response must contain exactly one `execute_restricted_python` tool call with only a string `code` field. Do not respond with plain text. The code may contain multiple sequential canonical Backend capability calls whose literal arguments are already decided. Do not use Python for reasoning, local computation, variables, control flow, string processing, or interpreting operation results. All results are returned only after the batch completes; inspect the aggregated observation in the next model turn, reason there, and choose the next batch.
+Reason about the task yourself before every action. Each action must call `execute_restricted_python` exactly once with only a string `code` field. The code is only for issuing canonical repository/process operations that you have already decided to perform. A single action may contain multiple sequential Backend capability calls.
 
-Allowed calls only:
+Python is an execution/batching syntax, not the reasoning environment. Reasoning happens in the LLM between actions. Do not use Python to reason about the task or analyze operation results. Do not write general Python scripts or use local variables, loops, conditionals, exception handling, printing, string processing, or other local computation.
+
+All Backend operation results are returned as an aggregated observation after the batch finishes. Read and reason about that observation yourself, decide what to do next, then issue the next batch action. Operations are pre-composed: use multiple operations in one batch only when their arguments are already known before execution. If a later operation depends on an earlier runtime result, stop the batch, inspect the observation in the next model turn, and issue the dependent operation in the next action.
+
+Allowed environment operations are only:
 repo.read_file(...)
 repo.search_text(...)
 repo.replace_text(...)
@@ -48,12 +52,15 @@ repo.delete_file(...)
 repo.git_diff(...)
 runner.run_process(...)
 
-Task-independent example:
+Valid task-independent batches:
 repo.read_file("src/a.py")
 repo.read_file("src/b.py")
 repo.git_diff()
 
-Each call goes through the shared canonical Backend and permission policy. Operations are pre-composed: a later call cannot depend on an earlier runtime result, and no local variable dataflow is allowed. Finish only with exactly `finish("done")` as the action's only statement. The structured tool observation lists every operation in execution order, including its name, literal arguments, status, and result or error.""",
+repo.search_text("needle", path=".")
+repo.git_diff()
+
+Do not write `r = repo.search_text(...)` followed by `repo.read_file(r["result"][0]["path"])`. Search first, inspect its returned observation in the next model turn, and then read a known path. Finish only with exactly `finish("done")` as the action's only statement.""",
 }
 
 

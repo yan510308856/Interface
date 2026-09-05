@@ -235,17 +235,23 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("Make the smallest correct repository change", atomic)
 
         restricted = runner.INTERFACE_PROMPTS["restricted_python"]
-        self.assertTrue(restricted.startswith("Use a batch operation interface"))
+        self.assertTrue(restricted.startswith("You use a batch operation interface"))
         for rule in (
-            "exactly one `execute_restricted_python` tool call",
+            "Each action must call `execute_restricted_python` exactly once",
             "only a string `code` field",
-            "multiple sequential canonical Backend capability calls",
-            "Do not use Python for reasoning, local computation, variables, control flow",
-            "aggregated observation in the next model turn",
+            "multiple sequential Backend capability calls",
+            "Reason about the task yourself before every action",
+            "Python is an execution/batching syntax, not the reasoning environment",
+            "Reasoning happens in the LLM between actions",
+            "Do not write general Python scripts",
+            "aggregated observation",
+            "next model turn",
+            "depends on an earlier runtime result",
+            "known before execution",
             'repo.read_file("src/a.py")',
             'repo.read_file("src/b.py")',
             "Operations are pre-composed",
-            "no local variable dataflow",
+            "inspect the observation in the next model turn",
             'finish("done")',
         ):
             self.assertIn(rule, restricted)
@@ -253,7 +259,7 @@ class RunnerTests(unittest.TestCase):
             self.assertIn(forbidden, restricted)
 
         final_prompt = runner._system_prompt("restricted_python")
-        self.assertTrue(final_prompt.startswith("Use a batch operation interface"))
+        self.assertTrue(final_prompt.startswith("You use a batch operation interface"))
         self.assertIn("\n\nTASK OBJECTIVE\n\n" + runner.COMMON_PROMPT, final_prompt)
         self.assertEqual(
             runner.COMMON_PROMPT + "\n" + runner.INTERFACE_PROMPTS["atomic"],
