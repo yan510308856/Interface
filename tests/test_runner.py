@@ -344,11 +344,15 @@ class RunnerTests(unittest.TestCase):
                 task, "restricted_python", "clean", 1, config, POLICY, model,
                 root / "run", skip_evaluation=True,
             )
+            events = JsonlLogger(root / "run" / "trajectory.jsonl").read()
 
         self.assertEqual(5, model.calls)
         self.assertEqual(5, result["actions"])
         self.assertEqual(0, result["backend_operations"])
         self.assertEqual("", result["final_patch"])
+        invalid_events = [event for event in events if event["event"] == "interface_action"]
+        self.assertEqual(5, len(invalid_events))
+        self.assertTrue(all(event["invalid_reason"] for event in invalid_events))
 
     def test_seed_filter_runs_only_requested_seed(self):
         task = Task("demo", "owner/repo", "base", "fix it")

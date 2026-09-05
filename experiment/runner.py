@@ -91,6 +91,19 @@ def _prompt_token_budget(config: dict[str, Any]) -> int:
     return MODEL_CONTEXT_LENGTH - model_config.get("max_tokens", DEFAULT_MAX_OUTPUT_TOKENS) - CONTEXT_SAFETY_MARGIN
 
 
+def _invalid_reason(action: Any) -> str | None:
+    if action.status != "invalid":
+        return None
+    try:
+        responses = json.loads(action.observation)
+    except (TypeError, ValueError):
+        return None
+    for response in reversed(responses if isinstance(responses, list) else []):
+        if isinstance(response, dict) and response.get("error"):
+            return str(response["error"])
+    return None
+
+
 def _prune_context(
     messages: list[dict[str, Any]],
     model: Model,
@@ -202,6 +215,7 @@ def run_one(
             logger.append({
                 "event": "interface_action", "action_id": action_number,
                 "status": action.status, "unsafe_attempt": action.unsafe_attempt,
+                "invalid_reason": _invalid_reason(action),
             })
             if len(generation.tool_calls) == 1 and isinstance(generation.tool_calls[0], dict):
                 tool_call = generation.tool_calls[0]
