@@ -1,12 +1,27 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
-from experiment.interfaces.restricted_python import _extract_program, execute_action
+from experiment.interfaces.restricted_python import (
+    RESTRICTED_PYTHON_TOOL_NAME,
+    RESTRICTED_PYTHON_TOOLS,
+    _extract_program,
+    execute_action as execute_envelope,
+    execute_code as execute_action,
+)
 from tests.helpers import git_repo, make_backend
+
+
+def envelope(arguments: object, name: str = RESTRICTED_PYTHON_TOOL_NAME) -> list[dict[str, object]]:
+    return [{
+        "id": "call-rp",
+        "type": "function",
+        "function": {"name": name, "arguments": json.dumps(arguments)},
+    }]
 
 
 class RestrictedPythonTests(unittest.TestCase):
@@ -17,6 +32,51 @@ class RestrictedPythonTests(unittest.TestCase):
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def test_envelope_schema_has_only_required_code_string(self):
+        self.assertEqual(1, len(RESTRICTED_PYTHON_TOOLS))
+        function = RESTRICTED_PYTHON_TOOLS[0]["function"]
+        self.assertEqual(RESTRICTED_PYTHON_TOOL_NAME, function["name"])
+        parameters = function["parameters"]
+        self.assertEqual({"code": {"type": "string"}}, parameters["properties"])
+        self.assertEqual(["code"], parameters["required"])
+        self.assertFalse(parameters["additionalProperties"])
+
+    def test_exactly_one_envelope_executes_and_aggregates_multiple_operations(self):
+        code = 'r1 = repo.read_file("sample.py")\nr2 = repo.git_diff()'
+        result = execute_envelope(envelope({"code": code}), self.backend, "structured")
+        self.assertEqual("ok", result.status)
+        self.assertEqual(["read_file", "git_diff"], [item["operation"] for item in result.responses])
+        self.assertEqual(result.responses, json.loads(result.observation))
+        self.assertEqual(2, self.backend.operation_count)
+
+    def test_invalid_envelopes_never_execute_backend(self):
+        invalid_inputs = (
+            'repo.read_file("sample.py")',
+            [],
+            envelope({"code": 'repo.read_file("sample.py")'}) * 2,
+            envelope({"code": 'repo.read_file("sample.py")'}, name="read_file"),
+            envelope({}),
+            envelope({"code": 1}),
+            envelope({"code": 'repo.read_file("sample.py")', "extra": True}),
+        )
+        for tool_calls in invalid_inputs:
+            result = execute_envelope(tool_calls, self.backend, "invalid-envelope")
+            self.assertEqual("invalid", result.status)
+        self.assertEqual(0, self.backend.operation_count)
+
+    def test_finish_is_submitted_inside_envelope(self):
+        done = execute_envelope(envelope({"code": 'finish("done")'}), self.backend, "done")
+        other = execute_envelope(envelope({"code": 'finish("other")'}), self.backend, "other")
+        mixed = execute_envelope(
+            envelope({"code": 'repo.read_file("sample.py")\nfinish("done")'}),
+            self.backend,
+            "mixed",
+        )
+        self.assertEqual("finish", done.status)
+        self.assertEqual("invalid", other.status)
+        self.assertEqual("invalid", mixed.status)
+        self.assertEqual(0, self.backend.operation_count)
 
     def test_raw_and_fenced_programs_work(self):
         program = 'repo.read_file("sample.py")'

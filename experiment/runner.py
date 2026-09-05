@@ -35,19 +35,11 @@ Call only one tool per response. Never batch or parallelize tool calls.
 Wait for the tool result before choosing the next action.
 Do not output a plain-text response without a tool call. Text outside a tool call does not complete the task, and ordinary text cannot end the task.
 Only a call to the finish tool indicates completion. Call finish only after the repository modification has actually been implemented, the final diff has been checked, and relevant tests have been run when practical.""",
-    "restricted_python": """STRICT ACTION FORMAT
+    "restricted_python": """Use exactly one `execute_restricted_python` action tool per response.
 
-Output one raw restricted Python action and nothing else.
-Do NOT output explanations.
-Do NOT output Markdown.
-Do NOT use ``` code fences.
-Every assistant response is interpreted directly as one executable action.
+Put one short restricted orchestration program in the tool's `code` field. Do not respond with plain text. The program may sequentially call zero or more canonical Backend capabilities; their aggregated observation is returned after the action.
 
-PURPOSE
-
-This is a short orchestration language for the provided repository and process capabilities, not a general-purpose Python environment. One action may execute zero or more Backend calls sequentially. Calls run in source order and their aggregated observation is returned after the action.
-
-Use local variables only for Backend responses or simple literals. Use minimal `if` conditions only to decide whether a later Backend call executes. Do not analyze returned file contents inside the action. Read the aggregated observation, reason in the next model turn, then output the next action. Local variables do not persist across actions; repository changes do.
+This is an operation-orchestration language, not a general-purpose Python environment. Use local variables only for Backend responses or simple literals, and minimal `if` conditions only to decide whether later Backend calls execute. After receiving the aggregated observation, perform further reasoning in the next turn. Local variables do not persist across actions; repository changes do.
 
 LEGAL ACTION EXAMPLES
 
@@ -79,7 +71,7 @@ Strings, integers, booleans, None, list/tuple/dictionary literals, assignment to
 
 Use only capability calls through `repo.` or `runner.`. Do NOT use general Python data processing or methods such as `split`, `find`, `startswith`, `endswith`, `replace`, `append`, or `insert`. Do NOT use `len`, `enumerate`, `print`, `for`, `while`, `break`, `continue`, `pass`, imports, arbitrary built-ins, or object methods. Do NOT use `open`, `Path`/`pathlib`, `os`, `subprocess`, `socket`, `requests`, `glob`, `shutil`, `tempfile`, `eval`, `exec`, `compile`, or `__import__`. Bare capability calls such as `read_file(...)` are invalid.
 
-Canonical format is raw restricted Python. Multiple code fences, malformed fences, prose, and ambiguous executable snippets are invalid. Completion must be exactly `finish("done")`, as the action's only statement.""",
+The `code` field is the canonical program input. Do not wrap it in Markdown or add prose. Completion uses the same action tool with code containing exactly `finish("done")`; finish must be the program's only statement.""",
 }
 
 
@@ -172,7 +164,8 @@ def run_one(
         backend = Backend(repo, PermissionEngine(repo, permission_policy), logger, budget["max_operations"])
         is_atomic = interface_name == "atomic"
         adapter = atomic if is_atomic else restricted_python
-        tools = atomic.ATOMIC_TOOLS if is_atomic else None
+        tools = atomic.ATOMIC_TOOLS if is_atomic else restricted_python.RESTRICTED_PYTHON_TOOLS
+        tool_choice = "auto" if is_atomic else "required"
         token_budget = _prompt_token_budget(config)
         messages = [
             {"role": "system", "content": _system_prompt(interface_name)},
@@ -189,12 +182,9 @@ def run_one(
                 "event": "model_request", "action_id": action_number,
                 "messages": messages, "prompt_tokens": prompt_tokens,
             })
-            if is_atomic:
-                generation = model.generate(
-                    messages, seed, tools=tools, tool_choice="auto",
-                )
-            else:
-                generation = model.generate(messages, seed)
+            generation = model.generate(
+                messages, seed, tools=tools, tool_choice=tool_choice,
+            )
             input_tokens += generation.input_tokens
             output_tokens += generation.output_tokens
             actions = action_number
@@ -205,7 +195,7 @@ def run_one(
                 "duration_seconds": generation.latency_seconds,
             })
             action = adapter.execute_action(
-                generation.tool_calls if is_atomic else generation.text,
+                generation.tool_calls,
                 backend,
                 str(action_number),
             )
@@ -213,7 +203,7 @@ def run_one(
                 "event": "interface_action", "action_id": action_number,
                 "status": action.status, "unsafe_attempt": action.unsafe_attempt,
             })
-            if is_atomic and len(generation.tool_calls) == 1 and isinstance(generation.tool_calls[0], dict):
+            if len(generation.tool_calls) == 1 and isinstance(generation.tool_calls[0], dict):
                 tool_call = generation.tool_calls[0]
                 messages.extend([
                     {"role": "assistant", "content": generation.text or None, "tool_calls": generation.tool_calls},

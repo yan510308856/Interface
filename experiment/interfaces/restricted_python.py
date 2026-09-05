@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import operator
 import re
 from typing import Any
@@ -13,6 +14,22 @@ from experiment.interfaces import ActionResult, observation
 
 CAPABILITIES = {"repo": OPERATIONS - {"run_process"}, "runner": {"run_process"}}
 KNOWN_CAPABILITY_NAMES = set().union(*CAPABILITIES.values())
+RESTRICTED_PYTHON_TOOL_NAME = "execute_restricted_python"
+RESTRICTED_PYTHON_TOOLS = [{
+    "type": "function",
+    "function": {
+        "name": RESTRICTED_PYTHON_TOOL_NAME,
+        "description": "Execute one restricted Python action that may orchestrate multiple canonical Backend operations.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string"},
+            },
+            "required": ["code"],
+            "additionalProperties": False,
+        },
+    },
+}]
 UNSAFE_FUNCTION_NAMES = {"open", "exec", "eval", "compile", "__import__", "Path"}
 UNSAFE_MODULE_NAMES = {
     "os", "subprocess", "socket", "pathlib", "shutil", "tempfile",
@@ -248,7 +265,7 @@ class Interpreter:
         return response
 
 
-def execute_action(source: str, backend: Backend, action_id: str) -> ActionResult:
+def execute_code(source: str, backend: Backend, action_id: str) -> ActionResult:
     interpreter = Interpreter(backend, action_id)
     try:
         if not isinstance(source, str) or len(source) > 16384:
@@ -289,3 +306,30 @@ def execute_action(source: str, backend: Backend, action_id: str) -> ActionResul
             interpreter.responses,
             getattr(exc, "unsafe_attempt", False),
         )
+
+
+def execute_action(tool_calls: list[dict[str, Any]], backend: Backend, action_id: str) -> ActionResult:
+    try:
+        if not isinstance(tool_calls, list) or len(tool_calls) != 1:
+            raise ValueError("expected exactly one restricted Python tool call")
+        tool_call = tool_calls[0]
+        if not isinstance(tool_call, dict):
+            raise ValueError("tool call must be an object")
+        if tool_call.get("type") != "function":
+            raise ValueError("expected a function tool call")
+        function = tool_call.get("function")
+        if not isinstance(function, dict):
+            raise ValueError("function must be an object")
+        if function["name"] != RESTRICTED_PYTHON_TOOL_NAME:
+            raise ValueError(f"expected {RESTRICTED_PYTHON_TOOL_NAME}")
+        raw_arguments = function["arguments"]
+        if not isinstance(raw_arguments, str):
+            raise ValueError("arguments must be JSON text")
+        arguments = json.loads(raw_arguments)
+        if not isinstance(arguments, dict):
+            raise ValueError("arguments must be an object")
+        if set(arguments) != {"code"} or not isinstance(arguments["code"], str):
+            raise ValueError("arguments must contain only a string code field")
+        return execute_code(arguments["code"], backend, action_id)
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        return ActionResult("invalid", observation([{"error": str(exc)}]))
