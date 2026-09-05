@@ -91,7 +91,14 @@ class StructuredIntegrationModel:
         })
         name = runner.restricted_python.RESTRICTED_PYTHON_TOOL_NAME
         code = (
-            'r1 = repo.read_file("sample.py")\nr2 = repo.git_diff()'
+            'r = repo.search_text("VALUE", path=".")\n'
+            'if r["ok"] and r["result"]["matches"]:\n'
+            '    p = r["result"]["matches"][0]["path"]\n'
+            '    f = repo.read_file(p)\n'
+            '    if f["ok"] and "VALUE" in f["result"]["content"]:\n'
+            '        pos = f["result"]["content"].find("VALUE")\n'
+            '        if pos >= 0:\n'
+            '            d = repo.git_diff()'
             if len(self.requests) == 1 else 'finish("done")'
         )
         return Generation("", 10, 3, 0.01, native_call(name, {"code": code}, f"call-{len(self.requests)}"))
@@ -313,15 +320,15 @@ class RunnerTests(unittest.TestCase):
             events = JsonlLogger(root / "run" / "trajectory.jsonl").read()
 
         self.assertEqual(2, result["actions"])
-        self.assertEqual(2, result["backend_operations"])
+        self.assertEqual(3, result["backend_operations"])
         self.assertEqual("required", model.requests[0]["tool_choice"])
         assistant, tool = model.requests[1]["messages"][-2:]
         self.assertEqual("execute_restricted_python", assistant["tool_calls"][0]["function"]["name"])
         observations = json.loads(tool["content"])
-        self.assertEqual(["read_file", "git_diff"], [item["operation"] for item in observations])
+        self.assertEqual(["search_text", "read_file", "git_diff"], [item["operation"] for item in observations])
         model_response = next(event for event in events if event["event"] == "model_response")
-        self.assertIn("repo.read_file", model_response["tool_calls"][0]["function"]["arguments"])
-        self.assertEqual(2, sum(event["event"] == "backend_operation" for event in events))
+        self.assertIn(".find", model_response["tool_calls"][0]["function"]["arguments"])
+        self.assertEqual(3, sum(event["event"] == "backend_operation" for event in events))
 
     def test_restricted_prose_terminal_response_is_invalid_until_budget_ends(self):
         with tempfile.TemporaryDirectory() as temporary:
