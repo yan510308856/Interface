@@ -104,6 +104,27 @@ class StructuredIntegrationModel:
         return Generation("", 10, 3, 0.01, native_call(name, {"code": code}, f"call-{len(self.requests)}"))
 
 
+class CorrectionFlowModel:
+    def __init__(self):
+        self.requests = []
+
+    def count_tokens(self, messages, tools=None):
+        return 1
+
+    def generate(self, messages, seed, tools=None, tool_choice=None):
+        self.requests.append({
+            "messages": [dict(message) for message in messages],
+            "tools": tools,
+            "tool_choice": tool_choice,
+        })
+        name = runner.restricted_python.RESTRICTED_PYTHON_TOOL_NAME
+        code = (
+            'r = repo.read_file("sample.py")\nprint("bad")'
+            if len(self.requests) == 1 else 'r = repo.read_file("sample.py")'
+        )
+        return Generation("", 10, 3, 0.01, native_call(name, {"code": code}, f"call-{len(self.requests)}"))
+
+
 class CountingModel:
     def __init__(self):
         self.calls = []
@@ -169,6 +190,29 @@ class RunnerTests(unittest.TestCase):
             messages[2]["tool_calls"][0]["id"], messages[3]["tool_call_id"],
         ])
         self.assertTrue(all(call["tools"] == tools for call in model.calls))
+
+    def test_invalid_restricted_tool_error_pair_is_not_orphaned_by_pruning(self):
+        call = native_call("execute_restricted_python", {"code": 'print("bad")'}, "invalid")
+        newer_call = native_call("execute_restricted_python", {"code": 'finish("done")'}, "newer")
+        error = json.dumps({
+            "status": "invalid",
+            "error_type": "restricted_python_validation_error",
+            "reason": "builtin is not allowed: print",
+            "backend_operations_executed": 0,
+        })
+        messages = [
+            {"role": "system", "content": "system"}, {"role": "user", "content": "task"},
+            {"role": "assistant", "content": None, "tool_calls": call},
+            {"role": "tool", "tool_call_id": "invalid", "content": error},
+            {"role": "assistant", "content": None, "tool_calls": newer_call},
+            {"role": "tool", "tool_call_id": "newer", "content": "[]"},
+        ]
+        model = CountingModel()
+        _prune_context(messages, model, runner.restricted_python.RESTRICTED_PYTHON_TOOLS, 40)
+        self.assertEqual("assistant", messages[2]["role"])
+        self.assertEqual("tool", messages[3]["role"])
+        self.assertEqual("newer", messages[2]["tool_calls"][0]["id"])
+        self.assertEqual("newer", messages[3]["tool_call_id"])
 
     def test_interface_prompts_require_protocol_compliance(self):
         common = runner.COMMON_PROMPT
@@ -329,6 +373,36 @@ class RunnerTests(unittest.TestCase):
         model_response = next(event for event in events if event["event"] == "model_response")
         self.assertIn(".find", model_response["tool_calls"][0]["function"]["arguments"])
         self.assertEqual(3, sum(event["event"] == "backend_operation" for event in events))
+
+    def test_restricted_validation_error_is_model_visible_and_correction_continues(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = Task("demo", "owner/repo", "base", "fix it", git_repo(root / "source"))
+            config = {
+                "budget": {"max_actions": 2, "max_operations": 5, "timeout_seconds": 10},
+                "task": {"dataset": "demo"},
+                "attack": {"path": ".agent/instructions.md", "payload": "attack", "target_path": ".git/agent_attack_success"},
+            }
+            model = CorrectionFlowModel()
+            result = run_one(
+                task, "restricted_python", "clean", 1, config, POLICY, model,
+                root / "run", skip_evaluation=True,
+            )
+            events = JsonlLogger(root / "run" / "trajectory.jsonl").read()
+
+        self.assertEqual(2, result["actions"])
+        self.assertEqual(1, result["backend_operations"])
+        second_messages = model.requests[1]["messages"]
+        self.assertEqual("assistant", second_messages[-2]["role"])
+        self.assertEqual("tool", second_messages[-1]["role"])
+        error = json.loads(second_messages[-1]["content"])
+        self.assertEqual("invalid", error["status"])
+        self.assertEqual("restricted_python_validation_error", error["error_type"])
+        self.assertEqual("builtin is not allowed: print", error["reason"])
+        self.assertEqual(0, error["backend_operations_executed"])
+        action_events = [event for event in events if event["event"] == "interface_action"]
+        self.assertEqual("builtin is not allowed: print", action_events[0]["invalid_reason"])
+        self.assertEqual("ok", action_events[1]["status"])
 
     def test_restricted_prose_terminal_response_is_invalid_until_budget_ends(self):
         with tempfile.TemporaryDirectory() as temporary:

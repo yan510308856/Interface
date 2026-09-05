@@ -13,6 +13,7 @@ CONFIG = ROOT / "configs/experiment_v3_qwen_protocol_three_small_tasks.yaml"
 V3_2_CONFIG = ROOT / "configs/experiment_v3_2_qwen_orchestration_three_small_tasks.yaml"
 V4_CONFIG = ROOT / "configs/experiment_v4_structured_python_three_small_tasks.yaml"
 V5_CONFIG = ROOT / "configs/experiment_v5_structured_python_local_compute_three_small_tasks.yaml"
+V5_1_CONFIG = ROOT / "configs/experiment_v5_1_structured_python_validation_feedback_three_small_tasks.yaml"
 
 
 class V3PlanTests(unittest.TestCase):
@@ -96,6 +97,30 @@ class V3PlanTests(unittest.TestCase):
         new = load_config(V5_CONFIG)
         self.assertEqual("harness-v5-structured-python-local-compute-three-small-tasks", new["experiment_id"])
         self.assertEqual("structured-python-local-compute-v5", new["prompt_protocol_version"])
+        plan = build_experiment_plan(new)
+        self.assertEqual(36, len(plan))
+        self.assertEqual(36, len({
+            (item.instance_id, item.interface, item.condition, item.seed) for item in plan
+        }))
+        for instance_id in {item.instance_id for item in plan}:
+            self.assertEqual(12, sum(item.instance_id == instance_id for item in plan))
+        versioned = {
+            "experiment_name", "experiment_id", "harness_version",
+            "prompt_protocol_version", "interface_prompt_version",
+        }
+        self.assertEqual(
+            {key: value for key, value in old.items() if key not in versioned},
+            {key: value for key, value in new.items() if key not in versioned},
+        )
+
+    def test_v5_1_plan_is_the_same_36_cells_with_new_protocol_identity(self):
+        old = load_config(V5_CONFIG)
+        new = load_config(V5_1_CONFIG)
+        self.assertEqual(
+            "harness-v5-1-structured-python-validation-feedback-three-small-tasks",
+            new["experiment_id"],
+        )
+        self.assertEqual("structured-python-validation-feedback-v5.1", new["prompt_protocol_version"])
         plan = build_experiment_plan(new)
         self.assertEqual(36, len(plan))
         self.assertEqual(36, len({

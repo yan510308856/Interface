@@ -98,6 +98,9 @@ def _invalid_reason(action: Any) -> str | None:
         responses = json.loads(action.observation)
     except (TypeError, ValueError):
         return None
+    if isinstance(responses, dict) and responses.get("status") == "invalid":
+        reason = responses.get("reason")
+        return str(reason) if reason else None
     for response in reversed(responses if isinstance(responses, list) else []):
         if isinstance(response, dict) and response.get("error"):
             return str(response["error"])

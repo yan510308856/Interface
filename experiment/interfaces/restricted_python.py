@@ -42,6 +42,9 @@ PURE_BUILTINS = {"len", "range", "enumerate", "min", "max"}
 PURE_STRING_METHODS = {"find", "startswith", "endswith", "strip", "split"}
 PURE_LIST_METHODS = {"append", "insert"}
 MAX_LOCAL_ITERATIONS = 10_000
+VALIDATION_ERROR_TYPE = "restricted_python_validation_error"
+ENVELOPE_ERROR_TYPE = "restricted_python_envelope_error"
+EXECUTION_ERROR_TYPE = "restricted_python_execution_error"
 
 
 class RestrictedPythonError(ValueError):
@@ -50,10 +53,34 @@ class RestrictedPythonError(ValueError):
         self.unsafe_attempt = unsafe_attempt
 
 
+def _error_observation(
+    error_type: str, reason: str, backend_operations_executed: int,
+) -> str:
+    return json.dumps({
+        "status": "invalid",
+        "error_type": error_type,
+        "reason": reason,
+        "backend_operations_executed": backend_operations_executed,
+    }, sort_keys=True)
+
+
 def _attribute_root_name(node: ast.AST) -> str | None:
     while isinstance(node, ast.Attribute):
         node = node.value
     return node.id if isinstance(node, ast.Name) else None
+
+
+def _attribute_label(node: ast.Attribute) -> str:
+    parts: list[str] = []
+    current: ast.AST = node
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if isinstance(current, ast.Name):
+        parts.append(current.id)
+    else:
+        parts.append("<expression>")
+    return ".".join(reversed(parts))
 
 
 def _has_private_access(node: ast.AST) -> bool:
@@ -184,7 +211,7 @@ class Validator(ast.NodeVisitor):
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         raise RestrictedPythonError(
-            "attribute access is allowed only in capability calls",
+            f"attribute access is not allowed: {_attribute_label(node)}",
             unsafe_attempt=_has_private_access(node) or _attribute_root_name(node) in UNSAFE_MODULE_NAMES,
         )
 
@@ -200,7 +227,7 @@ class Validator(ast.NodeVisitor):
         elif isinstance(node.func, ast.Name) and node.func.id in PURE_BUILTINS:
             pass
         elif isinstance(node.func, ast.Name) and node.func.id in KNOWN_CAPABILITY_NAMES:
-            raise RestrictedPythonError("capability calls must use their namespace")
+            raise RestrictedPythonError(f"capability must use namespace: {node.func.id}")
         elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
             namespace = node.func.value.id
             if node.func.attr in CAPABILITIES.get(namespace, set()):
@@ -214,12 +241,16 @@ class Validator(ast.NodeVisitor):
                     or namespace.startswith("_")
                     or node.func.attr.startswith("_")
                 )
-                raise RestrictedPythonError("capability method is not allowed", unsafe_attempt=unsafe)
+                reason_type = "capability method" if namespace in CAPABILITIES else "method"
+                raise RestrictedPythonError(
+                    f"{reason_type} is not allowed: {namespace}.{node.func.attr}",
+                    unsafe_attempt=unsafe,
+                )
         elif isinstance(node.func, ast.Attribute) and node.func.attr in PURE_STRING_METHODS | PURE_LIST_METHODS:
             self.visit(node.func.value)
         elif isinstance(node.func, ast.Attribute):
             raise RestrictedPythonError(
-                "only capability calls and approved pure methods are allowed",
+                f"method is not allowed: {_attribute_label(node.func)}",
                 unsafe_attempt=(
                     _attribute_root_name(node.func) in CAPABILITIES
                     or _attribute_root_name(node.func) in UNSAFE_MODULE_NAMES
@@ -229,9 +260,9 @@ class Validator(ast.NodeVisitor):
         elif isinstance(node.func, ast.Name) and (
             node.func.id in UNSAFE_FUNCTION_NAMES or node.func.id.startswith("_")
         ):
-            raise RestrictedPythonError("only capability calls and finish are allowed", unsafe_attempt=True)
+            raise RestrictedPythonError(f"builtin is not allowed: {node.func.id}", unsafe_attempt=True)
         else:
-            raise RestrictedPythonError("only capability calls and finish are allowed")
+            raise RestrictedPythonError(f"builtin is not allowed: {node.func.id}")
         for value in node.args:
             self.visit(value)
         for keyword in node.keywords:
@@ -490,7 +521,7 @@ def execute_code(source: str, backend: Backend, action_id: str) -> ActionResult:
             raise RestrictedPythonError("program AST is too large")
         Validator().visit(tree)
         if len(finish_calls) > 1:
-            raise RestrictedPythonError("only one finish call is allowed")
+            raise RestrictedPythonError("multiple finish calls are not allowed")
         if finish_calls:
             only_statement = (
                 len(tree.body) == 1
@@ -498,17 +529,23 @@ def execute_code(source: str, backend: Backend, action_id: str) -> ActionResult:
                 and tree.body[0].value is finish_calls[0]
             )
             if not only_statement:
-                raise RestrictedPythonError("finish must be the only action")
+                raise RestrictedPythonError("finish must be the only statement")
+    except (SyntaxError, RestrictedPythonError) as exc:
+        return ActionResult(
+            "invalid", _error_observation(VALIDATION_ERROR_TYPE, str(exc), 0), [],
+            getattr(exc, "unsafe_attempt", False),
+        )
+    try:
         interpreter.run(tree)
-        status = "finish" if interpreter.finished else "ok"
-        return ActionResult(status, observation(interpreter.responses), interpreter.responses)
-    except (SyntaxError, KeyError, IndexError, TypeError, ValueError) as exc:
+    except (KeyError, IndexError, TypeError, ValueError, _BreakSignal, _ContinueSignal) as exc:
         return ActionResult(
             "invalid",
-            observation(interpreter.responses + [{"error": str(exc)}]),
+            _error_observation(EXECUTION_ERROR_TYPE, str(exc), len(interpreter.responses)),
             interpreter.responses,
             getattr(exc, "unsafe_attempt", False),
         )
+    status = "finish" if interpreter.finished else "ok"
+    return ActionResult(status, observation(interpreter.responses), interpreter.responses)
 
 
 def execute_action(tool_calls: list[dict[str, Any]], backend: Backend, action_id: str) -> ActionResult:
@@ -523,16 +560,20 @@ def execute_action(tool_calls: list[dict[str, Any]], backend: Backend, action_id
         function = tool_call.get("function")
         if not isinstance(function, dict):
             raise ValueError("function must be an object")
-        if function["name"] != RESTRICTED_PYTHON_TOOL_NAME:
-            raise ValueError(f"expected {RESTRICTED_PYTHON_TOOL_NAME}")
-        raw_arguments = function["arguments"]
+        if function.get("name") != RESTRICTED_PYTHON_TOOL_NAME:
+            raise ValueError(f"wrong envelope tool: {function.get('name', '<missing>')}")
+        raw_arguments = function.get("arguments")
         if not isinstance(raw_arguments, str):
             raise ValueError("arguments must be JSON text")
         arguments = json.loads(raw_arguments)
         if not isinstance(arguments, dict):
             raise ValueError("arguments must be an object")
-        if set(arguments) != {"code"} or not isinstance(arguments["code"], str):
-            raise ValueError("arguments must contain only a string code field")
+        if "code" not in arguments:
+            raise ValueError("missing code argument")
+        if not isinstance(arguments["code"], str):
+            raise ValueError("code must be a string")
+        if set(arguments) != {"code"}:
+            raise ValueError("unexpected envelope arguments")
         return execute_code(arguments["code"], backend, action_id)
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-        return ActionResult("invalid", observation([{"error": str(exc)}]))
+        return ActionResult("invalid", _error_observation(ENVELOPE_ERROR_TYPE, str(exc), 0))

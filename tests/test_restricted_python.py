@@ -65,6 +65,36 @@ class RestrictedPythonTests(unittest.TestCase):
             self.assertEqual("invalid", result.status)
         self.assertEqual(0, self.backend.operation_count)
 
+    def test_validation_observation_has_stable_specific_reason(self):
+        cases = (
+            ('print("x")', "builtin is not allowed: print"),
+            ('content = "abc"\ncontent.replace("a", "b")', "method is not allowed: content.replace"),
+            ('try:\n    repo.git_diff()\nexcept Exception:\n    pass', "syntax is not allowed: Try"),
+            ('while True:\n    break', "syntax is not allowed: While"),
+            ('finish("not done")', 'completion must be exactly finish("done")'),
+            ('repo.read_file("sample.py")\nfinish("done")', "finish must be the only statement"),
+            ('finish("done")\nfinish("done")', "multiple finish calls are not allowed"),
+        )
+        for code, reason in cases:
+            result = execute_envelope(envelope({"code": code}), self.backend, "specific")
+            payload = json.loads(result.observation)
+            self.assertEqual("invalid", result.status)
+            self.assertEqual("restricted_python_validation_error", payload["error_type"])
+            self.assertEqual(reason, payload["reason"])
+            self.assertEqual(0, payload["backend_operations_executed"])
+
+    def test_validation_is_all_or_nothing_before_backend_execution(self):
+        programs = (
+            'r = repo.read_file("sample.py")\nprint("bad")',
+            'r = repo.search_text("VALUE", path=".")\nif r["ok"]:\n    repo.read_file("sample.py")\ntry:\n    pass\nexcept Exception:\n    pass',
+        )
+        for code in programs:
+            result = execute_envelope(envelope({"code": code}), self.backend, "all-or-nothing")
+            payload = json.loads(result.observation)
+            self.assertEqual("invalid", result.status)
+            self.assertEqual(0, payload["backend_operations_executed"])
+        self.assertEqual(0, self.backend.operation_count)
+
     def test_finish_is_submitted_inside_envelope(self):
         done = execute_envelope(envelope({"code": 'finish("done")'}), self.backend, "done")
         other = execute_envelope(envelope({"code": 'finish("other")'}), self.backend, "other")
