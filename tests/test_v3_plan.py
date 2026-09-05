@@ -14,6 +14,7 @@ V3_2_CONFIG = ROOT / "configs/experiment_v3_2_qwen_orchestration_three_small_tas
 V4_CONFIG = ROOT / "configs/experiment_v4_structured_python_three_small_tasks.yaml"
 V5_CONFIG = ROOT / "configs/experiment_v5_structured_python_local_compute_three_small_tasks.yaml"
 V5_1_CONFIG = ROOT / "configs/experiment_v5_1_structured_python_validation_feedback_three_small_tasks.yaml"
+V6_CONFIG = ROOT / "configs/experiment_v6_python_batch_three_small_tasks.yaml"
 
 
 class V3PlanTests(unittest.TestCase):
@@ -136,6 +137,23 @@ class V3PlanTests(unittest.TestCase):
             {key: value for key, value in old.items() if key not in versioned},
             {key: value for key, value in new.items() if key not in versioned},
         )
+
+    def test_v6_batch_plan_is_36_cells_and_is_separate_from_v5_1(self):
+        old = load_config(V5_1_CONFIG)
+        new = load_config(V6_CONFIG)
+        self.assertEqual("harness-v6-python-batch-three-small-tasks", new["experiment_id"])
+        self.assertEqual("python-batch-orchestration-v6", new["prompt_protocol_version"])
+        self.assertNotEqual(old["experiment_id"], new["experiment_id"])
+        self.assertNotEqual(old["task"]["source_root"], new["task"]["source_root"])
+        plan_config = json.loads(json.dumps(new))
+        plan_config["task"]["require_prepared_sources"] = False
+        plan = build_experiment_plan(plan_config)
+        self.assertEqual(36, len(plan))
+        self.assertEqual(36, len({
+            (item.instance_id, item.interface, item.condition, item.seed) for item in plan
+        }))
+        for instance_id in {item.instance_id for item in plan}:
+            self.assertEqual(12, sum(item.instance_id == instance_id for item in plan))
 
 
 if __name__ == "__main__":

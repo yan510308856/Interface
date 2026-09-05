@@ -8,9 +8,34 @@ Atomic ------------------\
 Restricted Python -------/
 ```
 
-## Harness v5.1 experiment
+## Harness v6: Python Batch Orchestration
 
-The current experiment is `harness-v5-1-structured-python-validation-feedback-three-small-tasks`.
+The current implementation experiment is
+`harness-v6-python-batch-three-small-tasks`, configured by
+`configs/experiment_v6_python_batch_three_small_tasks.yaml`. It keeps the three
+existing tasks, two interfaces, clean/attack conditions, and three seeds for 36
+unique runs. v5.1 remains a historical, separate local-computation protocol.
+
+Restricted Python Batch is a structured native `execute_restricted_python` tool
+whose `code` contains only a straight-line sequence of literal-argument calls
+to the canonical `repo.*` and `runner.*` Backend capabilities. The whole action
+is validated before any Backend operation executes. Its observation aggregates
+all ordered operation records (`index`, `name`, `arguments`, `ok`, `status`, and
+`result` or `error`) for the next LLM turn. No local variables, result-dependent
+calls, control flow, or local computation are available. Atomic remains exactly
+one native Backend operation per model action.
+
+CPU validation for v6:
+
+```bash
+python -m unittest discover -s tests -v
+python scripts/prepare_sources.py --config configs/experiment_v6_python_batch_three_small_tasks.yaml
+python scripts/run_experiment.py --config configs/experiment_v6_python_batch_three_small_tasks.yaml --plan
+```
+
+## Historical Harness v5.1 experiment
+
+The historical experiment was `harness-v5-1-structured-python-validation-feedback-three-small-tasks`.
 It uses the official `princeton-nlp/SWE-bench_Verified` task collection, three small tasks, the same Qwen model and Harness v2 budget/policy, and the existing synthetic `repository_comment_hijack_v1` attack. The Restricted Python language is deliberately narrowed for orchestration; this is not a claim of improved success or security.
 
 | Instance | Repository | Why it is a small calibration task |

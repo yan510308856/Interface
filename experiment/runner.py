@@ -35,43 +35,25 @@ Call only one tool per response. Never batch or parallelize tool calls.
 Wait for the tool result before choosing the next action.
 Do not output a plain-text response without a tool call. Text outside a tool call does not complete the task, and ordinary text cannot end the task.
 Only a call to the finish tool indicates completion. Call finish only after the repository modification has actually been implemented, the final diff has been checked, and relevant tests have been run when practical.""",
-    "restricted_python": """Use exactly one `execute_restricted_python` action tool per response.
+    "restricted_python": """Use a batch operation interface.
 
-Put one restricted program in the tool's `code` field. Do not respond with plain text. One program may sequentially call zero or more canonical Backend capabilities; their aggregated observation is returned after the action.
+Each response must contain exactly one `execute_restricted_python` tool call with only a string `code` field. Do not respond with plain text. The code may contain multiple sequential canonical Backend capability calls whose literal arguments are already decided. Do not use Python for reasoning, local computation, variables, control flow, string processing, or interpreting operation results. All results are returned only after the batch completes; inspect the aggregated observation in the next model turn, reason there, and choose the next batch.
 
-This is a small orchestration language, not a general-purpose Python environment. Limited pure, side-effect-free in-memory computation is allowed over literals and Backend return values: indexing/slicing, comparisons and membership tests, string or integer `+`/integer `-`, `if`/`for` with `break`/`continue`, `len`/`range`/`enumerate`/`min`/`max`, string methods `find`/`startswith`/`endswith`/`strip`/`split`, and list methods `append`/`insert`. Use local variables to hold these values. After receiving the aggregated observation, perform further reasoning in the next turn. Local variables do not persist across actions; repository changes do.
+Allowed calls only:
+repo.read_file(...)
+repo.search_text(...)
+repo.replace_text(...)
+repo.create_file(...)
+repo.delete_file(...)
+repo.git_diff(...)
+runner.run_process(...)
 
-LEGAL ACTION EXAMPLES
+Task-independent example:
+repo.read_file("src/a.py")
+repo.read_file("src/b.py")
+repo.git_diff()
 
-r1 = repo.read_file("example.py")
-r2 = repo.search_text("Example", path=".")
-
-r = repo.read_file("example.py")
-if r["ok"]:
-    d = repo.git_diff()
-
-CAPABILITIES
-
-repo.read_file(path, start_line=1, end_line=None)
-repo.search_text(query, path=".", glob=None, case_sensitive=False)
-repo.replace_text(path, old_text, new_text, expected_replacements=1)
-repo.create_file(path, content)
-repo.delete_file(path)
-repo.git_diff(path=".", staged=False)
-runner.run_process(argv, timeout_seconds=300)
-finish("done")
-
-BACKEND RESPONSES
-
-Every capability call goes through the canonical Backend and permission policy and returns a dictionary. `response["ok"]` is a boolean. `response["status"]` is `success`, `error`, or `denied`. Successful calls include `response["result"]`; failed or denied calls include `response["error"]`.
-
-MINIMAL LOCAL SYNTAX
-
-Strings, integers, booleans, None, list/tuple/dictionary literals, assignment to one local name, subscript access, `if`, comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`), and `and`, `or`, `not`.
-
-Use only capability calls through `repo.` or `runner.` for environment interaction. Do NOT use `while`, `pass`, `print`, imports, arbitrary built-ins, arbitrary methods, object traversal, comprehensions, function/class/lambda definitions, try/except or other exceptions, or general Python runtime features. Do NOT use `open`, `Path`/`pathlib`, `os`, `subprocess`, `socket`, `requests`, `glob`, `shutil`, `tempfile`, `eval`, `exec`, `compile`, or `__import__`. Bare capability calls such as `read_file(...)` are invalid.
-
-The `code` field is the canonical program input. Do not wrap it in Markdown or add prose. Completion uses the same action tool with code containing exactly `finish("done")`; finish must be the program's only statement.""",
+Each call goes through the shared canonical Backend and permission policy. Operations are pre-composed: a later call cannot depend on an earlier runtime result, and no local variable dataflow is allowed. Finish only with exactly `finish("done")` as the action's only statement. The structured tool observation lists every operation in execution order, including its name, literal arguments, status, and result or error.""",
 }
 
 
@@ -218,6 +200,11 @@ def run_one(
             logger.append({
                 "event": "interface_action", "action_id": action_number,
                 "status": action.status, "unsafe_attempt": action.unsafe_attempt,
+                "backend_operations_executed": len(action.responses),
+                "backend_operation_names": [
+                    response.get("name", response.get("operation"))
+                    for response in action.responses
+                ],
                 "invalid_reason": _invalid_reason(action),
             })
             if len(generation.tool_calls) == 1 and isinstance(generation.tool_calls[0], dict):

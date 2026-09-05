@@ -11,7 +11,7 @@ from experiment.interfaces.restricted_python import (
     RESTRICTED_PYTHON_TOOLS,
     _extract_program,
     execute_action as execute_envelope,
-    execute_code as execute_action,
+    execute_code,
 )
 from tests.helpers import git_repo, make_backend
 
@@ -24,380 +24,204 @@ def envelope(arguments: object, name: str = RESTRICTED_PYTHON_TOOL_NAME) -> list
     }]
 
 
-class RestrictedPythonTests(unittest.TestCase):
+class RestrictedPythonBatchTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        self.backend = make_backend(git_repo(root / "repo"), root / "log.jsonl")
+        repo = git_repo(root / "repo")
+        (repo / "a.py").write_text("A = 1\n", encoding="utf-8")
+        (repo / "b.py").write_text("B = 2\n", encoding="utf-8")
+        self.backend = make_backend(repo, root / "log.jsonl")
 
     def tearDown(self):
         self.temporary.cleanup()
 
-    def test_envelope_schema_has_only_required_code_string(self):
-        self.assertEqual(1, len(RESTRICTED_PYTHON_TOOLS))
+    def payload(self, result):
+        return json.loads(result.observation)
+
+    def assert_invalid(self, code: str, reason: str | None = None):
+        result = execute_code(code, self.backend, "invalid")
+        self.assertEqual("invalid", result.status)
+        payload = self.payload(result)
+        self.assertEqual("invalid", payload["status"])
+        self.assertEqual("restricted_python_validation_error", payload["error_type"])
+        self.assertEqual(0, payload["backend_operations_executed"])
+        if reason is not None:
+            self.assertEqual(reason, payload["reason"])
+        return result
+
+    def test_envelope_schema_is_one_code_string(self):
         function = RESTRICTED_PYTHON_TOOLS[0]["function"]
         self.assertEqual(RESTRICTED_PYTHON_TOOL_NAME, function["name"])
-        parameters = function["parameters"]
-        self.assertEqual({"code": {"type": "string"}}, parameters["properties"])
-        self.assertEqual(["code"], parameters["required"])
-        self.assertFalse(parameters["additionalProperties"])
+        self.assertEqual({"code": {"type": "string"}}, function["parameters"]["properties"])
+        self.assertEqual(["code"], function["parameters"]["required"])
+        self.assertFalse(function["parameters"]["additionalProperties"])
 
-    def test_exactly_one_envelope_executes_and_aggregates_multiple_operations(self):
-        code = 'r1 = repo.read_file("sample.py")\nr2 = repo.git_diff()'
-        result = execute_envelope(envelope({"code": code}), self.backend, "structured")
-        self.assertEqual("ok", result.status)
-        self.assertEqual(["read_file", "git_diff"], [item["operation"] for item in result.responses])
-        self.assertEqual(result.responses, json.loads(result.observation))
-        self.assertEqual(2, self.backend.operation_count)
-
-    def test_invalid_envelopes_never_execute_backend(self):
-        invalid_inputs = (
-            'repo.read_file("sample.py")',
-            [],
-            envelope({"code": 'repo.read_file("sample.py")'}) * 2,
-            envelope({"code": 'repo.read_file("sample.py")'}, name="read_file"),
-            envelope({}),
-            envelope({"code": 1}),
-            envelope({"code": 'repo.read_file("sample.py")', "extra": True}),
-        )
-        for tool_calls in invalid_inputs:
-            result = execute_envelope(tool_calls, self.backend, "invalid-envelope")
-            self.assertEqual("invalid", result.status)
-        self.assertEqual(0, self.backend.operation_count)
-
-    def test_validation_observation_has_stable_specific_reason(self):
-        cases = (
-            ('print("x")', "builtin is not allowed: print"),
-            ('content = "abc"\ncontent.replace("a", "b")', "method is not allowed: content.replace"),
-            ('try:\n    repo.git_diff()\nexcept Exception:\n    pass', "syntax is not allowed: Try"),
-            ('while True:\n    break', "syntax is not allowed: While"),
-            ('finish("not done")', 'completion must be exactly finish("done")'),
-            ('repo.read_file("sample.py")\nfinish("done")', "finish must be the only statement"),
-            ('finish("done")\nfinish("done")', "multiple finish calls are not allowed"),
-        )
-        for code, reason in cases:
-            result = execute_envelope(envelope({"code": code}), self.backend, "specific")
-            payload = json.loads(result.observation)
-            self.assertEqual("invalid", result.status)
-            self.assertEqual("restricted_python_validation_error", payload["error_type"])
-            self.assertEqual(reason, payload["reason"])
-            self.assertEqual(0, payload["backend_operations_executed"])
-
-    def test_validation_is_all_or_nothing_before_backend_execution(self):
-        programs = (
-            'r = repo.read_file("sample.py")\nprint("bad")',
-            'r = repo.search_text("VALUE", path=".")\nif r["ok"]:\n    repo.read_file("sample.py")\ntry:\n    pass\nexcept Exception:\n    pass',
-        )
-        for code in programs:
-            result = execute_envelope(envelope({"code": code}), self.backend, "all-or-nothing")
-            payload = json.loads(result.observation)
-            self.assertEqual("invalid", result.status)
-            self.assertEqual(0, payload["backend_operations_executed"])
-        self.assertEqual(0, self.backend.operation_count)
-
-    def test_finish_is_submitted_inside_envelope(self):
-        done = execute_envelope(envelope({"code": 'finish("done")'}), self.backend, "done")
-        other = execute_envelope(envelope({"code": 'finish("other")'}), self.backend, "other")
-        mixed = execute_envelope(
-            envelope({"code": 'repo.read_file("sample.py")\nfinish("done")'}),
+    def test_valid_batch_reads_two_files_and_diff_in_order(self):
+        result = execute_code(
+            'repo.read_file("a.py")\nrepo.read_file("b.py")\nrepo.git_diff()',
             self.backend,
-            "mixed",
+            "valid-1",
         )
-        self.assertEqual("finish", done.status)
-        self.assertEqual("invalid", other.status)
-        self.assertEqual("invalid", mixed.status)
-        self.assertEqual(0, self.backend.operation_count)
-
-    def test_raw_and_fenced_programs_work(self):
-        program = 'repo.read_file("sample.py")'
-        for source in (program, f"```python\n{program}\n```", f"I'll inspect the file.\n\n```python\n{program}\n```"):
-            result = execute_action(source, self.backend, "1")
-            self.assertEqual("ok", result.status)
+        self.assertEqual("ok", result.status)
+        payload = self.payload(result)
+        self.assertEqual("ok", payload["status"])
+        self.assertEqual(["read_file", "read_file", "git_diff"], [
+            item["name"] for item in payload["operations"]
+        ])
+        self.assertEqual([1, 2, 3], [item["index"] for item in payload["operations"]])
+        self.assertEqual("a.py", payload["operations"][0]["arguments"]["path"])
         self.assertEqual(3, self.backend.operation_count)
 
-    def test_empty_action_executes_zero_backend_operations(self):
-        result = execute_action("", self.backend, "empty")
+    def test_valid_batch_searches_then_reads_diff(self):
+        result = execute_code('repo.search_text("Foo", path=".")\nrepo.git_diff()', self.backend, "valid-2")
         self.assertEqual("ok", result.status)
-        self.assertEqual([], result.responses)
-        self.assertEqual(0, self.backend.operation_count)
+        self.assertEqual(["search_text", "git_diff"], [item["name"] for item in self.payload(result)["operations"]])
 
-    def test_multiple_python_fenced_programs_are_not_salvaged(self):
-        source = (
-            'prose\n```python\nrepo.search_text("x", ".")\n```\n'
-            'more prose\n```py\nrepo.read_file("sample.py")\n```'
+    def test_valid_batch_runs_process_then_diff(self):
+        result = execute_code(
+            'runner.run_process(["python", "-m", "pytest", "--version"])\nrepo.git_diff()',
+            self.backend,
+            "valid-3",
         )
-        with self.assertRaisesRegex(ValueError, "at most one"):
-            _extract_program(source)
-        result = execute_action(source, self.backend, "1")
-        self.assertEqual("invalid", result.status)
-        self.assertEqual(0, self.backend.operation_count)
+        self.assertEqual("ok", result.status)
+        self.assertEqual(["run_process", "git_diff"], [item["name"] for item in self.payload(result)["operations"]])
 
-    def test_mixed_or_non_python_fenced_programs_are_invalid(self):
-        mixed = '```python\nrepo.read_file("sample.py")\n```\n```javascript\nopen("x")\n```'
-        non_python = '```javascript\nrepo.read_file("sample.py")\n```'
-        for source in (mixed, non_python):
-            result = execute_action(source, self.backend, "bad")
-            self.assertEqual("invalid", result.status)
-        self.assertEqual(0, self.backend.operation_count)
-
-    def test_malformed_or_unclosed_fences_are_invalid(self):
-        for source in (
-            "```python\nrepo.read_file(\"sample.py\")",
-            "```python repo.read_file(\"sample.py\")\n```",
-            "```python\nrepo.read_file(\"sample.py\")\n``` trailing text",
-        ):
-            result = execute_action(source, self.backend, "bad")
-            self.assertEqual("invalid", result.status)
-        self.assertEqual(0, self.backend.operation_count)
-
-    def test_prose_only_is_invalid(self):
-        result = execute_action("Looking at this issue, I need to inspect the file.", self.backend, "prose")
-        self.assertEqual("invalid", result.status)
-        self.assertEqual(0, self.backend.operation_count)
-
-    def test_prose_with_standalone_finish_is_invalid(self):
-        for source in (
-            'Task completed.\nfinish("done")',
-            "Done.\n\nfinish('done')",
-        ):
-            result = execute_action(source, self.backend, "finish")
-            self.assertEqual("invalid", result.status)
-        self.assertEqual(0, self.backend.operation_count)
-
-    def test_a100_style_prose_fences_and_finish_are_invalid(self):
-        sources = (
-            """Natural-language final summary...
-```python
-cright[...] = 1
-```
-
-Explanation...
-
-finish("done")""",
-            """The example below is quoted for context.
-```python
-repo.read_file("sample.py")
-```
-The task is complete.
-finish('done')""",
-            """prose
-```python
-repo.read_file("sample.py")
-```
-finish("done")""",
-        )
-        for source in sources:
-            result = execute_action(source, self.backend, "quoted-finish")
-            self.assertEqual("invalid", result.status)
-        self.assertEqual(0, self.backend.operation_count)
-
-    def test_finish_with_other_actions_is_still_terminal_only(self):
-        for source in (
-            'Summary\nrepo.read_file("sample.py")\nfinish("done")',
-            'Summary\nrepo.replace_text("sample.py", "1", "2")\nfinish("done")',
-            'Summary\nfinish("done")\nfinish("done")',
-        ):
-            result = execute_action(source, self.backend, "invalid-finish")
-            self.assertEqual("invalid", result.status)
-        self.assertEqual(0, self.backend.operation_count)
-
-    def test_finish_is_the_only_terminal_action(self):
-        for source in (
-            'finish("done")\nfinish("done")',
-            'repo.read_file("sample.py")\nfinish("done")',
-            'finish("done")\nrepo.read_file("sample.py")',
-            'print("x")\nfinish("done")',
-            'value = 1\nfinish("done")',
-            'foo()\nfinish("done")',
-            'finish(variable)',
-            'finish()',
-            'finish("complete")',
-            'finish(message="done")',
-            'if True:\n    finish("done")',
-        ):
-            result = execute_action(source, self.backend, "invalid-finish")
-            self.assertEqual("invalid", result.status)
-        self.assertEqual(0, self.backend.operation_count)
-
-    def test_literal_finish_still_works(self):
-        result = execute_action('finish("done")', self.backend, "finish")
-        self.assertEqual("finish", result.status)
-        self.assertEqual(0, self.backend.operation_count)
-
-    def test_action_composes_backend_operations_in_order_through_permission(self):
+    def test_backend_permission_is_used_for_every_batch_operation(self):
         original_check = self.backend.permission.check
         self.backend.permission.check = Mock(wraps=original_check)
-        source = (
-            'r1 = repo.read_file("sample.py")\n'
-            'r2 = repo.search_text("VALUE", path=".")\n'
-            'if r1["ok"] and r2["ok"]:\n'
-            '    r3 = repo.git_diff()'
-        )
-        result = execute_action(source, self.backend, "1")
+        result = execute_code('repo.read_file("a.py")\nrepo.git_diff()', self.backend, "permission")
         self.assertEqual("ok", result.status)
-        self.assertEqual(3, self.backend.operation_count)
-        self.assertEqual(["read_file", "search_text", "git_diff"], [
-            response["operation"] for response in result.responses
-        ])
-        self.assertEqual(3, self.backend.permission.check.call_count)
-        self.assertEqual(["read_file", "search_text", "git_diff"], [
+        self.assertEqual(2, self.backend.permission.check.call_count)
+        self.assertEqual(["read_file", "git_diff"], [
             event["operation"] for event in self.backend.logger.read()
             if event["event"] == "backend_operation"
         ])
 
-    def test_if_skips_later_backend_call_after_failed_response(self):
-        source = (
-            'r = repo.read_file("missing.py")\n'
-            'if r["ok"]:\n'
-            '    s = repo.search_text("never", path=".")'
-        )
-        result = execute_action(source, self.backend, "conditional")
-        self.assertEqual("ok", result.status)
-        self.assertEqual(1, self.backend.operation_count)
-        self.assertFalse(result.responses[0]["ok"])
+    def test_local_assignment_is_rejected(self):
+        self.assert_invalid('r = repo.read_file("a.py")', "local assignment is not allowed in batch mode")
 
-    def test_v5_pure_local_computation_drives_backend_call(self):
-        source = (
-            'text = "  Alpha beta  "\n'
-            'prefix = text[2:7]\n'
-            'parts = text.strip().split()\n'
-            'if "Alpha" in text and "Gamma" not in text:\n'
-            '    if prefix == "Alpha" and text.find("beta") >= 0:\n'
-            '        if text.startswith("  ") and text.endswith("  ") and len(parts) == 2:\n'
-            '            d = repo.git_diff()'
-        )
-        result = execute_action(source, self.backend, "pure")
-        self.assertEqual("ok", result.status)
-        self.assertEqual(["git_diff"], [item["operation"] for item in result.responses])
+    def test_result_dependent_name_and_subscript_are_rejected(self):
+        self.assert_invalid('repo.read_file(r["path"])', "local computation is not allowed in batch mode")
+        self.assert_invalid('repo.read_file(r)', "local computation is not allowed in batch mode")
 
-    def test_v5_range_enumerate_min_max_mutation_and_control_flow(self):
-        source = (
-            'items = []\n'
-            'items.append("b")\n'
-            'items.insert(0, "a")\n'
-            'low = min([3, 1, 2])\n'
-            'high = max([3, 1, 2])\n'
-            'for i, item in enumerate(items):\n'
-            '    if i == 0:\n'
-            '        continue\n'
-            '    if i == 2:\n'
-            '        break\n'
-            '    if item == "b" and low + 2 == high:\n'
-            '        d = repo.git_diff()\n'
-            'for j in range(1, 3):\n'
-            '    if j == 2:\n'
-            '        break'
-        )
-        result = execute_action(source, self.backend, "pure-loop")
-        self.assertEqual("ok", result.status)
-        self.assertEqual(1, self.backend.operation_count)
+    def test_control_flow_is_rejected(self):
+        self.assert_invalid('if True:\n    repo.git_diff()', "control flow is not allowed in batch mode")
+        self.assert_invalid('for item in ["a"]:\n    repo.git_diff()', "control flow is not allowed in batch mode")
+        self.assert_invalid('while True:\n    break', "control flow is not allowed in batch mode")
 
-    def test_v5_backend_result_processing_and_multi_operation_order(self):
-        source = (
-            'r = repo.search_text("VALUE", path=".")\n'
-            'if r["ok"] and r["result"]["matches"]:\n'
-            '    for match in r["result"]["matches"]:\n'
-            '        p = match["path"]\n'
-            '        f = repo.read_file(p)\n'
-            '        if f["ok"]:\n'
-            '            text = f["result"]["content"]\n'
-            '            if "VALUE" in text and text.find("VALUE") >= 0:\n'
-            '                d = repo.git_diff()'
-        )
-        original_check = self.backend.permission.check
-        self.backend.permission.check = Mock(wraps=original_check)
-        result = execute_action(source, self.backend, "processed")
-        self.assertEqual("ok", result.status)
-        self.assertEqual(["search_text", "read_file", "git_diff"], [
-            item["operation"] for item in result.responses
-        ])
-        self.assertEqual(3, self.backend.permission.check.call_count)
+    def test_local_builtins_and_string_processing_are_rejected(self):
+        self.assert_invalid('len("x")', "only canonical Backend capability calls are allowed")
+        self.assert_invalid('content.split(" ")', "local computation is not allowed in batch mode")
+        self.assert_invalid('print("x")', "only canonical Backend capability calls are allowed")
+        self.assert_invalid('content.replace("a", "b")', "local computation is not allowed in batch mode")
 
-    def test_v5_reassignment_nested_subscripts_and_index_arithmetic(self):
-        source = (
-            'data = {"outer": {"items": ["zero", "one", "two"]}}\n'
-            'data = data["outer"]\n'
-            'items = data["items"]\n'
-            'index = 1 - 0\n'
-            'item = items[index]\n'
-            'if item == "one" and items[0:2] == ["zero", "one"]:\n'
-            '    d = repo.git_diff()'
+    def test_try_augassign_and_other_statements_are_rejected(self):
+        self.assert_invalid(
+            'try:\n    repo.git_diff()\nexcept Exception:\n    pass',
+            "try/except is not allowed in batch mode",
         )
-        result = execute_action(source, self.backend, "reassigned")
-        self.assertEqual("ok", result.status)
-        self.assertEqual(1, self.backend.operation_count)
+        self.assert_invalid('total += 1', "local assignment is not allowed in batch mode")
+        self.assert_invalid('pass', "only canonical Backend capability calls are allowed")
+        self.assert_invalid('"literal"', "only canonical Backend capability calls are allowed")
+        self.assert_invalid('repo.read_file("a.py", "b.py", "c.py", "d.py")', "too many positional arguments")
+        self.assert_invalid('repo.read_file("a.py", path="b.py")', "duplicate argument: path")
 
-    def test_v5_operation_budget_is_still_enforced(self):
-        self.backend.max_operations = 1
-        result = execute_action(
-            'repo.git_diff()\nrepo.git_diff()', self.backend, "budget",
+    def test_only_canonical_capabilities_are_allowed(self):
+        unsafe_sources = (
+            'open("x", "w")',
+            'os.system("id")',
+            'subprocess.run(["id"])',
+            'pathlib.Path("x")',
+            'git.Repo(".")',
+            'repo.unknown_operation()',
+            'runner.unknown_operation()',
+            'm.some_model()',
         )
-        self.assertEqual("ok", result.status)
-        self.assertEqual(2, self.backend.operation_count)
-        self.assertEqual(["success", "error"], [item["status"] for item in result.responses])
+        for source in unsafe_sources:
+            self.assert_invalid(source, "only canonical Backend capability calls are allowed")
+        for source in ('open("x", "w")', 'os.system("id")', 'subprocess.run(["id"])', 'pathlib.Path("x")'):
+            result = execute_code(source, self.backend, "unsafe")
+            self.assertTrue(result.unsafe_attempt, source)
 
-    def test_general_python_computation_not_in_v5_subset_is_rejected(self):
+    def test_imports_direct_apis_and_arbitrary_methods_are_rejected(self):
         for source in (
-            'content = "abc"\ncontent.replace("a", "b")',
-            'items = []\nitems.pop()',
-            'len([1])\nprint("x")',
-            'for i in range(1):\n    pass',
-            'while True:\n    break', 'break', 'continue', 'pass',
-            'sum([1])', 'sorted([1])', 'try:\n    pass\nexcept Exception:\n    pass',
-            'def f():\n    pass', 'lambda x: x', '[x for x in [1]]',
-            '"abc".upper()', 'data = {}\ndata.get("x")',
-            "foo()", "m.some_model()", "separability_matrix()",
-            'replace_text("sample.py", "1", "2")', "git_diff()",
+            "import os", "from pathlib import Path", 'socket.socket()', 'requests.get("https://example.com")',
+            'shutil.copy("a", "b")', 'repo.read_file("a.py").get("result")',
         ):
-            result = execute_action(source, self.backend, "bad")
-            self.assertEqual("invalid", result.status)
-            self.assertFalse(result.unsafe_attempt)
-
-    def test_direct_environment_apis_are_rejected(self):
-        forbidden_sources = (
-            'open("x", "w")', "exec(\"x\")", 'eval("x")', 'compile("x", "x", "exec")',
-            '__import__("os")', "import os", 'os.system("id")',
-            'subprocess.run(["id"])', "socket.socket()", 'pathlib.Path("x")',
-            'Path("x")',
-            'shutil.copy("a", "b")', 'tempfile.mkstemp()', 'requests.get("https://example.com")',
-            'glob.glob("*")', 'repo.unknown_operation()',
-            'runner.unknown_operation()', 'm._private()',
-            'sys.exit()', 'inspect.getsource("x")', 'globals()', 'locals()',
-            'vars()', 'getattr(data, "x")', 'setattr(data, "x", 1)',
-            'delattr(data, "x")', 'hasattr(data, "x")', 'type(data)', 'object()',
-        )
-        for forbidden in forbidden_sources:
-            result = execute_action(forbidden, self.backend, "bad")
-            self.assertEqual("invalid", result.status)
-            self.assertTrue(result.unsafe_attempt)
-        syntax_error = execute_action("repo.read_file(", self.backend, "bad")
-        self.assertEqual("invalid", syntax_error.status)
-        self.assertFalse(syntax_error.unsafe_attempt)
+            self.assert_invalid(source)
         self.assertEqual(0, self.backend.operation_count)
 
-    def test_v5_advanced_runtime_constructs_are_rejected(self):
-        for source in (
-            'with repo.read_file("sample.py") as value:\n    pass',
-            'raise ValueError("x")',
-            'async def f():\n    await repo.git_diff()',
-            'class Example:\n    pass',
-            'yield 1',
+    def test_whole_action_validation_prevents_partial_execution(self):
+        for code in (
+            'repo.read_file("a.py")\nprint("bad")',
+            'repo.read_file("a.py")\nif True:\n    repo.git_diff()',
         ):
-            result = execute_action(source, self.backend, "advanced")
-            self.assertEqual("invalid", result.status)
-            self.assertEqual(0, self.backend.operation_count)
+            self.assert_invalid(code)
+        self.assertEqual(0, self.backend.operation_count)
 
-    def test_locals_reset_but_repository_changes_persist_between_responses(self):
-        edited = execute_action(
-            'r = repo.replace_text("sample.py", "1", "2")', self.backend, "edit",
+    def test_aggregated_observation_includes_success_and_error(self):
+        result = execute_code(
+            'repo.read_file("a.py")\nrepo.read_file("missing.py")\nrepo.git_diff()',
+            self.backend,
+            "aggregate",
         )
+        payload = self.payload(result)
+        self.assertEqual(["read_file", "read_file", "git_diff"], [item["name"] for item in payload["operations"]])
+        self.assertEqual(["success", "error", "success"], [item["status"] for item in payload["operations"]])
+        self.assertIn("result", payload["operations"][0])
+        self.assertIn("error", payload["operations"][1])
+        self.assertEqual(3, len(result.responses))
+
+    def test_operation_budget_error_is_still_aggregated(self):
+        self.backend.max_operations = 1
+        result = execute_code('repo.git_diff()\nrepo.git_diff()', self.backend, "budget")
+        self.assertEqual("ok", result.status)
+        self.assertEqual(["success", "error"], [item["status"] for item in self.payload(result)["operations"]])
+
+    def test_structured_envelope_requires_exactly_one_call_and_code_only(self):
+        invalid_inputs = (
+            [],
+            envelope({"code": 'repo.read_file("a.py")'}) * 2,
+            envelope({"code": 'repo.read_file("a.py")'}, name="read_file"),
+            envelope({}),
+            envelope({"code": 1}),
+            envelope({"code": 'repo.read_file("a.py")', "extra": True}),
+        )
+        for tool_calls in invalid_inputs:
+            self.assertEqual("invalid", execute_envelope(tool_calls, self.backend, "envelope").status)
+        self.assertEqual(0, self.backend.operation_count)
+
+    def test_invalid_batch_returns_model_visible_structured_feedback(self):
+        result = execute_envelope(envelope({"code": 'r = repo.search_text("Foo", path=".")'}), self.backend, "feedback")
+        payload = self.payload(result)
+        self.assertEqual({
+            "status": "invalid",
+            "error_type": "restricted_python_validation_error",
+            "reason": "local assignment is not allowed in batch mode",
+            "backend_operations_executed": 0,
+        }, payload)
+
+    def test_finish_is_only_valid_terminal_statement(self):
+        done = execute_envelope(envelope({"code": 'finish("done")'}), self.backend, "done")
+        self.assertEqual("finish", done.status)
+        self.assertEqual(0, self.backend.operation_count)
+        self.assert_invalid('finish("other")', 'completion must be exactly finish("done")')
+        self.assert_invalid('finish("done")\nrepo.git_diff()', "finish must be the only statement")
+        self.assert_invalid('repo.git_diff()\nfinish("done")', "finish must be the only statement")
+        self.assert_invalid('finish("done")\nfinish("done")', "multiple finish calls are not allowed")
+
+    def test_fenced_code_remains_deterministic_but_prose_is_not_executable(self):
+        program = 'repo.read_file("a.py")'
+        self.assertEqual(program + "\n", _extract_program(f"```python\n{program}\n```"))
+        self.assertEqual("ok", execute_code(f"```python\n{program}\n```", self.backend, "fenced").status)
+        self.assertEqual("invalid", execute_code("prose only", self.backend, "prose").status)
+
+    def test_no_runtime_result_can_flow_between_operations(self):
+        edited = execute_code('repo.replace_text("sample.py", "1", "2")', self.backend, "edit")
         self.assertEqual("ok", edited.status)
-
-        stale_local = execute_action('repo.read_file(r["result"]["path"])', self.backend, "stale")
-        self.assertEqual("invalid", stale_local.status)
-
-        reread = execute_action('repo.read_file("sample.py")', self.backend, "read")
-        self.assertEqual("ok", reread.status)
+        self.assert_invalid('repo.read_file(edited["result"]["path"])', "local computation is not allowed in batch mode")
+        reread = execute_code('repo.read_file("sample.py")', self.backend, "read")
         self.assertIn("VALUE = 2", reread.responses[0]["result"]["content"])
 
 
