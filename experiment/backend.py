@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import fnmatch
+import json
 import os
 import subprocess
 import time
 from collections import defaultdict
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -14,30 +16,149 @@ from experiment.logging import JsonlLogger
 from experiment.permission import PermissionEngine
 
 
-OPERATIONS = {
-    "read_file", "search_text", "replace_text", "create_file",
-    "delete_file", "run_process", "git_diff",
+OPERATION_ARGUMENT_SCHEMAS: dict[str, dict[str, Any]] = {
+    "read_file": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Repository-relative file path."},
+            "start_line": {"type": "integer", "description": "1-based first line; defaults to 1."},
+            "end_line": {"type": "integer", "description": "Inclusive last line; defaults to the read limit."},
+        },
+        "required": ["path"],
+        "additionalProperties": False,
+    },
+    "search_text": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Text to search for."},
+            "path": {"type": "string", "description": "Repository-relative file or directory; defaults to ."},
+            "glob": {"type": "string", "description": "Optional repository-relative glob filter."},
+            "case_sensitive": {"type": "boolean", "description": "Whether matching is case-sensitive; defaults to false."},
+        },
+        "required": ["query"],
+        "additionalProperties": False,
+    },
+    "replace_text": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Repository-relative file path."},
+            "old_text": {"type": "string", "description": "Exact text to replace."},
+            "new_text": {"type": "string", "description": "Replacement text."},
+            "expected_replacements": {"type": "integer", "description": "Expected match count; defaults to 1."},
+        },
+        "required": ["path", "old_text", "new_text"],
+        "additionalProperties": False,
+    },
+    "create_file": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Repository-relative new file path."},
+            "content": {"type": "string", "description": "UTF-8 file content."},
+        },
+        "required": ["path", "content"],
+        "additionalProperties": False,
+    },
+    "delete_file": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Repository-relative file path."},
+        },
+        "required": ["path"],
+        "additionalProperties": False,
+    },
+    "run_process": {
+        "type": "object",
+        "properties": {
+            "argv": {"type": "array", "items": {"type": "string"}, "description": "Argument vector; no shell string."},
+            "timeout_seconds": {"type": "integer", "description": "Process timeout; defaults to 300 seconds."},
+        },
+        "required": ["argv"],
+        "additionalProperties": False,
+    },
+    "git_diff": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Repository-relative path; defaults to ."},
+            "staged": {"type": "boolean", "description": "Read staged diff when true; defaults to false."},
+        },
+        "additionalProperties": False,
+    },
 }
 
+OPERATION_ORDER = tuple(OPERATION_ARGUMENT_SCHEMAS)
+OPERATIONS = set(OPERATION_ORDER)
 ARGUMENT_ORDER = {
-    "read_file": ("path", "start_line", "end_line"),
-    "search_text": ("query", "path", "glob", "case_sensitive"),
-    "replace_text": ("path", "old_text", "new_text", "expected_replacements"),
-    "create_file": ("path", "content"),
-    "delete_file": ("path",),
-    "run_process": ("argv", "timeout_seconds"),
-    "git_diff": ("path", "staged"),
+    name: tuple(schema["properties"])
+    for name, schema in OPERATION_ARGUMENT_SCHEMAS.items()
+}
+REQUIRED_ARGUMENTS = {
+    name: set(schema.get("required", ()))
+    for name, schema in OPERATION_ARGUMENT_SCHEMAS.items()
+}
+OPERATION_DESCRIPTIONS = {
+    "read_file": "Read UTF-8 text from a repository file. Defaults to start_line=1 and at most 400 lines when end_line is omitted.",
+    "search_text": "Search repository text. Defaults to path='.', glob=None, and case_sensitive=False; .git is excluded.",
+    "replace_text": "Replace exact text in a repository file. expected_replacements defaults to 1 and must match.",
+    "create_file": "Create one new repository file; existing files are not overwritten.",
+    "delete_file": "Delete one repository file after the shared permission check.",
+    "run_process": "Run one argv through the shared process allowlist. timeout_seconds defaults to 300.",
+    "git_diff": "Read the repository diff. Defaults to path='.' and staged=False.",
 }
 
-REQUIRED_ARGUMENTS = {
-    "read_file": {"path"},
-    "search_text": {"query"},
-    "replace_text": {"path", "old_text", "new_text"},
-    "create_file": {"path", "content"},
-    "delete_file": {"path"},
-    "run_process": {"argv"},
-    "git_diff": set(),
-}
+
+def operation_argument_schema(operation: str) -> dict[str, Any]:
+    """Return a copy of the canonical JSON schema for one Backend operation."""
+    return deepcopy(OPERATION_ARGUMENT_SCHEMAS[operation])
+
+
+def operation_tool_schema(operation: str) -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": operation,
+            "description": OPERATION_DESCRIPTIONS[operation],
+            "parameters": operation_argument_schema(operation),
+        },
+    }
+
+
+def _matches_json_type(value: Any, schema: dict[str, Any]) -> bool:
+    schema_type = schema.get("type")
+    if schema_type == "string":
+        return isinstance(value, str)
+    if schema_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if schema_type == "boolean":
+        return isinstance(value, bool)
+    if schema_type == "array":
+        return isinstance(value, list) and all(
+            _matches_json_type(item, schema.get("items", {})) for item in value
+        )
+    if schema_type == "object":
+        return isinstance(value, dict)
+    return True
+
+
+def operation_argument_error(index: int, operation: str, arguments: Any) -> str | None:
+    """Validate model-facing operation arguments without executing the Backend."""
+    schema = OPERATION_ARGUMENT_SCHEMAS[operation]
+    prefix = f"operation {index} ({operation})"
+    if not isinstance(arguments, dict):
+        return f"{prefix}: arguments must be an object"
+    allowed = list(schema["properties"])
+    required = list(schema.get("required", ()))
+    format_fields = lambda fields: json.dumps(fields, ensure_ascii=False)
+    unknown = sorted(set(arguments) - set(allowed))
+    if unknown:
+        return f"{prefix}: unsupported arguments {format_fields(unknown)}; allowed arguments {format_fields(allowed)}; required arguments {format_fields(required)}"
+    missing = sorted(set(required) - set(arguments))
+    if missing:
+        return f"{prefix}: missing arguments {format_fields(missing)}; allowed arguments {format_fields(allowed)}; required arguments {format_fields(required)}"
+    for name, value in arguments.items():
+        if not _matches_json_type(value, schema["properties"][name]):
+            expected = schema["properties"][name].get("type", "valid JSON value")
+            return f"{prefix}: argument {name!r} must have type {expected}; allowed arguments {format_fields(allowed)}; required arguments {format_fields(required)}"
+    return None
 
 DEFAULT_READ_LINES = 400
 

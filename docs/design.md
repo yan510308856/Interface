@@ -18,6 +18,12 @@ backend-operation budgets. The deterministic MC1--MC4 manipulation check is
 implemented in `experiment/microbenchmark.py` and
 `scripts/run_manipulation_check.py`.
 
+Operation schemas are canonicalized in `experiment/backend.py` and exposed to
+the model through discriminated `oneOf` variants inside `submit_action`; this
+preserves exact operation names, required fields, types, and closed argument
+objects. All formal conditions set `parallel_tool_calls=false`, so an action
+contains one outer tool call and batching occurs only inside its operation list.
+
 Restricted Python remains available only for historical reproducibility. The
 older sections below describe those legacy protocols and must not be mixed
 with the new G1/G2/G4 trajectories.

@@ -198,11 +198,13 @@ def run_one(
             adapter = granularity.GranularityActionAdapter(max_ops_per_action)
             tools = granularity.build_tools(max_ops_per_action)
             tool_choice = "required"
+            parallel_tool_calls = False
         else:
             is_atomic = interface_name == "atomic"
             adapter = atomic if is_atomic else restricted_python
             tools = atomic.ATOMIC_TOOLS if is_atomic else restricted_python.RESTRICTED_PYTHON_TOOLS
             tool_choice = "auto" if is_atomic else "required"
+            parallel_tool_calls = None
         token_budget = _prompt_token_budget(config)
         messages = [
             {"role": "system", "content": _system_prompt(interface_name, max_ops_per_action)},
@@ -235,10 +237,12 @@ def run_one(
             logger.append({
                 "event": "model_request", "action_id": action_id,
                 "messages": messages, "prompt_tokens": prompt_tokens,
+                "parallel_tool_calls": parallel_tool_calls,
             })
-            generation = model.generate(
-                messages, seed, tools=tools, tool_choice=tool_choice,
-            )
+            generate_kwargs = {"tools": tools, "tool_choice": tool_choice}
+            if parallel_tool_calls is not None:
+                generate_kwargs["parallel_tool_calls"] = parallel_tool_calls
+            generation = model.generate(messages, seed, **generate_kwargs)
             input_tokens += generation.input_tokens
             output_tokens += generation.output_tokens
             actions = action_number

@@ -765,3 +765,19 @@ is not a SWE-bench success benchmark.
 This implementation establishes the treatment mechanism. It does not claim
 that the real model will use G2/G4 capacity; that uptake must be measured and
 reported before interpreting downstream utility or security results.
+
+### Canonical operation contract
+
+The exact operation argument schemas are defined once in
+`experiment/backend.py` as `OPERATION_ARGUMENT_SCHEMAS`. Legacy Atomic tools
+and the new `submit_action` schema are generated from that source. The new
+schema uses a discriminated `oneOf` over operation name, with each variant
+containing its own typed `arguments` object and `additionalProperties: false`.
+Only the enclosing `operations.maxItems` is parameterized by G1/G2/G4.
+
+The current model request path also sets `parallel_tool_calls=false` for all
+three formal conditions. This prevents multiple outer tool calls from being
+mistaken for one action; batching must occur inside the single
+`submit_action.operations` list. Legacy interface request behavior is left
+unchanged. The provider's live Qwen/vLLM acceptance of the nested schema must
+still be checked by the next manual A100 rerun.

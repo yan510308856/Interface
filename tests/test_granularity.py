@@ -3,9 +3,12 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from copy import deepcopy
 from pathlib import Path
+from unittest.mock import Mock
 
-from experiment import runner
+from experiment.backend import OPERATION_ARGUMENT_SCHEMAS, OPERATION_ORDER
+from experiment.interfaces.atomic import ATOMIC_TOOLS
 from experiment.interfaces.granularity import GranularityActionAdapter, build_tools
 from experiment.logging import JsonlLogger
 from experiment.model import Generation
@@ -112,6 +115,84 @@ class GranularityAdapterTests(unittest.TestCase):
         self.assertEqual(0, self.backend.operation_count)
 
 
+class OperationSchemaTests(unittest.TestCase):
+    def test_every_backend_operation_schema_is_exposed_in_submit_action(self):
+        variants = build_tools(1)[0]["function"]["parameters"]["properties"]["operations"]["items"]["oneOf"]
+        by_name = {
+            variant["properties"]["name"]["enum"][0]: variant
+            for variant in variants
+        }
+        self.assertEqual(set(OPERATION_ORDER), set(by_name))
+        for name in OPERATION_ORDER:
+            self.assertEqual(
+                OPERATION_ARGUMENT_SCHEMAS[name],
+                by_name[name]["properties"]["arguments"],
+            )
+            self.assertEqual(["name", "arguments"], by_name[name]["required"])
+            self.assertFalse(by_name[name]["additionalProperties"])
+
+    def test_g1_g2_g4_have_identical_operation_definitions_and_only_max_items_differs(self):
+        schemas = [
+            build_tools(capacity)[0]["function"]["parameters"]
+            for capacity in (1, 2, 4)
+        ]
+        normalized = []
+        for schema in schemas:
+            copy = deepcopy(schema)
+            copy["properties"]["operations"].pop("maxItems")
+            normalized.append(copy)
+        self.assertEqual(normalized[0], normalized[1])
+        self.assertEqual(normalized[1], normalized[2])
+        self.assertEqual(
+            [schema["properties"]["operations"]["maxItems"] for schema in schemas],
+            [1, 2, 4],
+        )
+
+    def test_legacy_atomic_tools_reuse_the_same_canonical_argument_schemas(self):
+        tools = {tool["function"]["name"]: tool for tool in ATOMIC_TOOLS}
+        for name in OPERATION_ORDER:
+            self.assertEqual(OPERATION_ARGUMENT_SCHEMAS[name], tools[name]["function"]["parameters"])
+
+    def test_canonical_arguments_are_accepted_for_every_operation(self):
+        arguments = {
+            "read_file": {"path": "sample.py"},
+            "search_text": {"query": "VALUE"},
+            "replace_text": {"path": "sample.py", "old_text": "1", "new_text": "2"},
+            "create_file": {"path": "new.txt", "content": "x"},
+            "delete_file": {"path": "sample.py"},
+            "run_process": {"argv": ["pytest"]},
+            "git_diff": {},
+        }
+        for index, name in enumerate(OPERATION_ORDER, 1):
+            backend = Mock()
+            backend.execute.return_value = {
+                "ok": True, "operation": name, "operation_id": f"1.{index}",
+                "operation_index": index, "status": "success",
+            }
+            result = GranularityActionAdapter(1).execute_action(
+                action_call([operation(name, arguments[name])]), backend, str(index),
+            )
+            self.assertEqual("ok", result.status, name)
+            backend.execute.assert_called_once()
+
+    def test_alias_arguments_remain_invalid_with_canonical_feedback(self):
+        guesses = (
+            ("search_text", {"text": "VALUE"}),
+            ("replace_text", {"path": "sample.py", "old": "1", "new": "2"}),
+            ("run_process", {"command": ["pytest"]}),
+        )
+        for name, arguments in guesses:
+            backend = Mock()
+            result = GranularityActionAdapter(1).execute_action(
+                action_call([operation(name, arguments)]), backend, "alias",
+            )
+            self.assertEqual("invalid", result.status, name)
+            self.assertIn(f"({name})", result.observation)
+            self.assertIn("allowed arguments", result.observation)
+            self.assertIn("required arguments", result.observation)
+            backend.execute.assert_not_called()
+
+
 class BoundaryModel:
     def __init__(self):
         self.requests = []
@@ -119,11 +200,12 @@ class BoundaryModel:
     def count_tokens(self, messages, tools=None):
         return 1
 
-    def generate(self, messages, seed, tools=None, tool_choice=None):
+    def generate(self, messages, seed, tools=None, tool_choice=None, parallel_tool_calls=None):
         self.requests.append({
             "messages": [dict(item) for item in messages],
             "tools": tools,
             "tool_choice": tool_choice,
+            "parallel_tool_calls": parallel_tool_calls,
         })
         if len(self.requests) == 1:
             calls = action_call([
@@ -155,6 +237,7 @@ class ModelBoundaryTests(unittest.TestCase):
         self.assertEqual(2, result["backend_operations"])
         self.assertEqual(build_tools(2), model.requests[0]["tools"])
         self.assertEqual("required", model.requests[0]["tool_choice"])
+        self.assertFalse(model.requests[0]["parallel_tool_calls"])
         kinds = [event["event"] for event in events]
         first_response = kinds.index("model_response")
         second_request = kinds.index("model_request", first_response + 1)

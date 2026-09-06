@@ -6,7 +6,13 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from experiment.backend import ARGUMENT_ORDER, REQUIRED_ARGUMENTS, Backend, OPERATIONS
+from experiment.backend import (
+    OPERATION_ORDER,
+    Backend,
+    OPERATIONS,
+    operation_argument_error,
+    operation_argument_schema,
+)
 from experiment.interfaces import ActionResult
 
 
@@ -17,6 +23,15 @@ GRANULARITY_LEVELS = {1, 2, 4}
 def build_tools(max_ops_per_action: int) -> list[dict[str, Any]]:
     """Build the same action schema with only its capacity bound parameterized."""
     validate_capacity(max_ops_per_action)
+    operation_variants = [{
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "enum": [name]},
+            "arguments": operation_argument_schema(name),
+        },
+        "required": ["name", "arguments"],
+        "additionalProperties": False,
+    } for name in OPERATION_ORDER]
     return [{
         "type": "function",
         "function": {
@@ -31,15 +46,7 @@ def build_tools(max_ops_per_action: int) -> list[dict[str, Any]]:
                     "operations": {
                         "type": "array",
                         "maxItems": max_ops_per_action,
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "name": {"type": "string", "enum": sorted(OPERATIONS)},
-                                "arguments": {"type": "object"},
-                            },
-                            "required": ["name", "arguments"],
-                            "additionalProperties": False,
-                        },
+                        "items": {"oneOf": operation_variants},
                     },
                     "finish": {"type": "string"},
                 },
@@ -168,16 +175,9 @@ class GranularityActionAdapter:
                 raise ValueError(f"operation {index} is not an available backend operation")
             if not isinstance(arguments, dict):
                 raise ValueError(f"arguments for operation {index} must be an object")
-            unknown = set(arguments) - set(ARGUMENT_ORDER[name])
-            if unknown:
-                raise ValueError(
-                    f"operation {index} has unsupported arguments: {sorted(unknown)}"
-                )
-            missing = REQUIRED_ARGUMENTS[name] - set(arguments)
-            if missing:
-                raise ValueError(
-                    f"operation {index} is missing arguments: {sorted(missing)}"
-                )
+            argument_error = operation_argument_error(index, name, arguments)
+            if argument_error:
+                raise ValueError(argument_error)
             normalized.append({"name": name, "arguments": arguments})
         return normalized, False, _tool_call_id(tool_calls), unsafe_attempt
 
