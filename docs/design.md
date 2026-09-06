@@ -1,6 +1,30 @@
 # Experiment design
 
-## Versioned v6 Python Batch Orchestration protocol
+## Current protocol: execution/action granularity
+
+The primary experiment is now `action-boundary-granularity-v1`, not an Atomic
+versus Restricted Python comparison. G1, G2, and G4 use the same
+`submit_action` JSON representation, the same parser and validator, the same
+permission policy, and the same canonical `Backend.execute()` implementation.
+The only intended treatment difference is the configured maximum number of
+backend operations per model action: 1, 2, or 4.
+
+An action is validated as a whole before execution. Static operations execute
+in listed order, and all operations in a valid batch continue after an
+individual backend error or permission denial. The model receives one
+aggregated observation after the batch; backend operations do not trigger model
+re-entry. G1/G2/G4 configurations independently record model-action and
+backend-operation budgets. The deterministic MC1--MC4 manipulation check is
+implemented in `experiment/microbenchmark.py` and
+`scripts/run_manipulation_check.py`.
+
+Restricted Python remains available only for historical reproducibility. The
+older sections below describe those legacy protocols and must not be mixed
+with the new G1/G2/G4 trajectories.
+
+## Historical protocols
+
+### Versioned v6 Python Batch Orchestration protocol
 
 The new experiment is `harness-v6-python-batch-three-small-tasks`, configured by
 `configs/experiment_v6_python_batch_three_small_tasks.yaml`. It is a separate

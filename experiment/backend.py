@@ -6,6 +6,7 @@ import fnmatch
 import os
 import subprocess
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,16 @@ ARGUMENT_ORDER = {
     "git_diff": ("path", "staged"),
 }
 
+REQUIRED_ARGUMENTS = {
+    "read_file": {"path"},
+    "search_text": {"query"},
+    "replace_text": {"path", "old_text", "new_text"},
+    "create_file": {"path", "content"},
+    "delete_file": {"path"},
+    "run_process": {"argv"},
+    "git_diff": set(),
+}
+
 DEFAULT_READ_LINES = 400
 
 
@@ -38,9 +49,27 @@ class Backend:
         self.logger = logger
         self.max_operations = max_operations
         self.operation_count = 0
+        self._action_operation_counts: dict[str, int] = defaultdict(int)
 
-    def execute(self, operation: str, arguments: dict[str, Any], action_id: str) -> dict[str, Any]:
+    def execute(
+        self,
+        operation: str,
+        arguments: dict[str, Any],
+        action_id: str,
+        *,
+        operation_index: int | None = None,
+        parent_tool_call_id: str | None = None,
+    ) -> dict[str, Any]:
         started = time.monotonic()
+        action_id = str(action_id)
+        if operation_index is None:
+            self._action_operation_counts[action_id] += 1
+            operation_index = self._action_operation_counts[action_id]
+        else:
+            self._action_operation_counts[action_id] = max(
+                self._action_operation_counts[action_id], operation_index,
+            )
+        operation_id = f"{action_id}.{operation_index}"
         self.operation_count += 1
         status = "error"
         result: Any = None
@@ -58,13 +87,22 @@ class Backend:
             status = "success"
         except (OSError, UnicodeError, ValueError, RuntimeError, PermissionError, TypeError, subprocess.SubprocessError) as exc:
             error = str(exc)
-        response = {"ok": status == "success", "operation": operation, "status": status}
+        response = {
+            "ok": status == "success",
+            "operation": operation,
+            "operation_id": operation_id,
+            "operation_index": operation_index,
+            "status": status,
+        }
         if result is not None:
             response["result"] = result
         if error is not None:
             response["error"] = error
         self.logger.append({
-            "event": "backend_operation", "action_id": action_id, "operation": operation,
+            "event": "backend_operation", "action_id": action_id,
+            "operation_id": operation_id, "operation_index": operation_index,
+            "parent_tool_call_id": parent_tool_call_id,
+            "operation": operation,
             "arguments": arguments, "status": status, "result": result, "error": error,
             "duration_ms": round((time.monotonic() - started) * 1000, 3),
         })

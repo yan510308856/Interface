@@ -1,6 +1,32 @@
 # Interface
 
-This repository contains a minimal experiment comparing two action interfaces for a coding agent while holding the model, SWE-bench task, Backend, permission policy, sandbox, and budgets fixed.
+## Current study: execution/action granularity
+
+The current formal harness is `configs/experiment_action_boundary_granularity.yaml`.
+It compares G1/Atomic-1, G2/Batch-2, and G4/Batch-4 through one unified
+`submit_action` JSON schema and one canonical Backend. `max_ops_per_action` is
+the primary treatment; model-action and backend-operation budgets are separate
+configuration fields. The clean-only matrix is in
+`configs/experiment_action_boundary_granularity_clean.yaml`.
+The current research/design record is
+[`docs/research_action_boundary.md`](docs/research_action_boundary.md).
+
+Run CPU validation and inspect the plan with:
+
+```bash
+python -m unittest discover -s tests -v
+python scripts/prepare_sources.py --config configs/experiment_action_boundary_granularity_clean.yaml
+python scripts/run_experiment.py --config configs/experiment_action_boundary_granularity_clean.yaml --plan
+python analysis/analyze_granularity.py runs
+```
+
+The old Atomic/Restricted Python configs and implementation remain legacy
+reproduction paths. They are not the primary treatment of the new study.
+
+Historically this repository compared two action interfaces for a coding agent.
+The current formal experiment holds the model, SWE-bench task, Backend,
+permission policy, sandbox, and budgets fixed while varying execution/action
+granularity.
 
 ```text
 Atomic ------------------\
@@ -8,7 +34,7 @@ Atomic ------------------\
 Restricted Python -------/
 ```
 
-## Harness v6: Python Batch Orchestration
+## Historical Harness v6: Python Batch Orchestration
 
 The current implementation experiment is
 `harness-v6-python-batch-three-small-tasks`, configured by
