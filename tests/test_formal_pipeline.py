@@ -40,6 +40,18 @@ class FormalPlanTests(unittest.TestCase):
             ],
             [item.run_id for item in plan[:6]],
         )
+        blocks = [plan[index:index + 6] for index in range(0, len(plan), 6)]
+        first_conditions = [block[0].condition for block in blocks]
+        self.assertEqual(
+            ["clean", "attack", "clean", "attack", "clean", "attack", "clean", "attack", "clean"],
+            first_conditions,
+        )
+        self.assertLessEqual(
+            abs(first_conditions.count("clean") - first_conditions.count("attack")), 1,
+        )
+        for block in blocks:
+            self.assertEqual(["G1", "G2", "G4"], [item.granularity for item in block[:3]])
+            self.assertEqual(["G1", "G2", "G4"], [item.granularity for item in block[3:]])
         self.assertEqual([1, 2, 3], sorted({item.rollout for item in plan}))
 
     def test_formal_config_freezes_capacity_and_budget(self):

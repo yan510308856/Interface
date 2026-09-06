@@ -687,8 +687,8 @@ to have implemented the new causal design.
 
 ## 16. Immediate Next Steps
 
-The following are engineering and study-design tasks for a later phase. They
-are not executed by this document update:
+The following engineering and study-design tasks remain for a later phase; the
+schema-fixed A100 manipulation check described below has already been completed:
 
 1. Audit the current Atomic and RP/static-batch implementations and identify
    reusable components.
@@ -700,10 +700,8 @@ are not executed by this document update:
 6. Strengthen trajectory logging so action-to-operation parent relationships
    can be reconstructed reliably.
 7. Build a dedicated manipulation-check microbenchmark.
-8. Confirm that the real model uses multi-operation actions in G2/G4 rather
-   than falling back to `N_ops = 1`.
-9. Freeze the action-boundary policy and its terminology.
-10. Run the formal clean and attack factorial experiment only after the
+8. Freeze the action-boundary policy and its terminology.
+9. Run the formal clean and attack factorial experiment only after the
     manipulation check passes.
 
 ## Current Decision
@@ -762,9 +760,17 @@ oracle is configured. The deterministic MC1--MC4 scaffold is runnable with
 `python scripts/run_manipulation_check.py`; it measures realized batching and
 is not a SWE-bench success benchmark.
 
-This implementation establishes the treatment mechanism. It does not claim
-that the real model will use G2/G4 capacity; that uptake must be measured and
-reported before interpreting downstream utility or security results.
+The schema-fixed A100 manipulation check has verified real Qwen/vLLM support
+for the nested operation `oneOf` schema. The observed manipulation metrics were:
+
+| Condition | Backend ops / model-visible observation | Batch rate | Action-size distribution | Invalid actions |
+| --- | ---: | ---: | --- | ---: |
+| G1 | 1.0000 | 0 | — | 0 |
+| G2 | 1.3524 | 0.3458 | `{1: 68, 2: 37}` | 0 |
+| G4 | 1.5089 | 0.3509 | `{1: 72, 2: 25, 3: 13, 4: 2}` | 0 |
+
+These results verify that the live model uses the available G2/G4 capacity;
+they do not imply that the model should fill every available slot.
 
 ### Canonical operation contract
 
@@ -779,8 +785,8 @@ The current model request path also sets `parallel_tool_calls=false` for all
 three formal conditions. This prevents multiple outer tool calls from being
 mistaken for one action; batching must occur inside the single
 `submit_action.operations` list. Legacy interface request behavior is left
-unchanged. The provider's live Qwen/vLLM acceptance of the nested schema must
-still be checked by the next manual A100 rerun.
+unchanged. The schema-fixed A100 manipulation check verified the provider's
+live Qwen/vLLM acceptance of the nested schema.
 
 ## 18. Formal matrix pipeline
 
@@ -799,12 +805,14 @@ The conditions are `clean` and the existing
 placement, target behavior, sentinel target, and expected unsafe capability.
 The attack is injected only into each run's disposable repository copy.
 
-The deterministic schedule is blocked by task and rollout. Within each block,
-the order is `G1 clean`, `G2 clean`, `G4 clean`, followed by the corresponding
-attack cells. This interleaves granularity conditions so server timing and
-concurrency are not structurally assigned to one G condition. Up to three
-workers can run against one pre-existing vLLM endpoint; the runner never starts
-vLLM. Each worker receives a separate temporary repository and run directory.
+The deterministic schedule is blocked by task and rollout. The condition-first
+order alternates by block: even blocks run clean then attack, odd blocks run
+attack then clean. Each condition wave remains `G1`, `G2`, `G4`, so clean and
+attack are counterbalanced while granularity stays balanced within every wave.
+This interleaves granularity conditions so server timing and concurrency are not
+structurally assigned to one G condition. Up to three workers can run against
+one pre-existing vLLM endpoint; the runner never starts vLLM. Each worker
+receives a separate temporary repository and run directory.
 
 Every formal run is identified by task, G, condition/attack index, and rollout,
 for example `pallets__flask-5014-G2-attack01-r3`. Completed runs require a
@@ -850,5 +858,6 @@ python oracle/summarize_oracle.py \
 These commands are not run by the formal pipeline tests or by this code change.
 
 The local validation path is `--dry-run`, which uses a deterministic no-network
-model and is not experimental data. No real Qwen, vLLM, A100, or official
-SWE-bench oracle is started by these code changes.
+model and is not experimental data. The schema-fixed Qwen/vLLM manipulation
+check was run separately; the formal rollout and official SWE-bench oracle
+remain explicit later stages.

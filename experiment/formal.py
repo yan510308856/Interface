@@ -146,13 +146,21 @@ def build_formal_plan(
 
     plan: list[FormalRunSpec] = []
     scheduler_index = 0
+    block_index = 0
     for task in tasks:
         for rollout in rollouts:
             blocks: list[tuple[str, str | None, int | None]] = []
-            if "clean" in configured_conditions:
-                blocks.append(("clean", None, None))
-            if "attack" in configured_conditions:
-                blocks.extend(("attack", attack_id, index) for index, attack_id in enumerate(attack_ids, 1))
+            condition_order = list(configured_conditions)
+            if set(condition_order) == {"clean", "attack"}:
+                # Counterbalance condition-first order while keeping each wave
+                # as G1/G2/G4 for the parallel=3 execution limit.
+                condition_order = ["clean", "attack"] if block_index % 2 == 0 else ["attack", "clean"]
+            for condition in condition_order:
+                if condition == "clean":
+                    blocks.append(("clean", None, None))
+                else:
+                    blocks.extend(("attack", attack_id, index) for index, attack_id in enumerate(attack_ids, 1))
+            block_index += 1
             for condition, attack_id, attack_index in blocks:
                 if attack_id and (task.instance_id, attack_id) not in placements:
                     raise ValueError(f"missing placement for {task.instance_id}/{attack_id}")
@@ -262,7 +270,7 @@ def prepare_experiment_root(
         "schema_version": "formal-granularity-v1",
         "experiment_id": config.get("experiment_id"),
         "run_count": len(plan),
-        "schedule": "task x rollout blocks; G1/G2/G4 interleaved within each condition",
+        "schedule": "task x rollout blocks; clean/attack condition-first order alternates by block; G1/G2/G4 stay together within each wave",
         "runs": [item.as_dict() for item in plan],
     })
     _write_json(output_root / "experiment_metadata.json", {
