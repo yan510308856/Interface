@@ -822,9 +822,32 @@ the file is copied into the root as the `observed` object.
 `analysis/analyze_formal_matrix.py` produces long and grouped CSV/JSON summaries
 without invoking SWE-bench. `scripts/freeze_experiment.py` creates a separate
 provenance bundle with runtime/dependency metadata and `SHA256SUMS`; it is an
-artifact operation and must not modify rollout data. The `oracle/` scripts only
-prepare predictions, invoke the official SWE-bench harness, and normalize its
-reports. They do not implement a replacement grader.
+artifact operation and must not modify rollout data. The historical oracle
+artifact under `oracle/harness-v6-1-python-batch-nine-task-clean/` is the
+reference for official semantics. The tracked `oracle/adapter.py` is a small
+normalized metadata layer around that artifact contract: it reads both legacy
+`input/runs/` and formal `runs/<run-id>/`, exports one prediction file per
+rollout, invokes the same `swebench eval` path, reads `resolved` only from
+official `report.json`, and writes per-rollout oracle/combined summaries. The
+CLI files are thin wrappers around this one adapter; they are not a replacement
+grader. Empty patches are not submitted and count as agent-level failures;
+Docker/setup/harness failures remain separate infrastructure outcomes.
+
+After a frozen A100 artifact is downloaded, the official evaluation stage is
+explicit and separate from rollout:
+
+```bash
+python oracle/prepare_predictions.py --experiment <formal-root>
+python oracle/run_official_swebench.py \
+  --experiment <formal-root> \
+  --task-metadata <verified-task-json> \
+  --output <oracle-output-root>
+python oracle/summarize_oracle.py \
+  --experiment <formal-root> \
+  --oracle <oracle-output-root>
+```
+
+These commands are not run by the formal pipeline tests or by this code change.
 
 The local validation path is `--dry-run`, which uses a deterministic no-network
 model and is not experimental data. No real Qwen, vLLM, A100, or official

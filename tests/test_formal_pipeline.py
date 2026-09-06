@@ -168,8 +168,10 @@ class FreezeAndOracleTests(unittest.TestCase):
             )
             self.assertTrue(destination.is_file())
             self.assertEqual("not_attempted_empty_patch", manifest[0]["evaluator_status"])
-            with self.assertRaises(ValueError):
-                prepare(root, None, None)
+            directory, all_manifest = prepare(root, None, None)
+            self.assertTrue(directory.is_dir())
+            self.assertEqual(18, len(all_manifest))
+            self.assertEqual(18, len(list(directory.glob("*.jsonl"))))
 
 
 if __name__ == "__main__":

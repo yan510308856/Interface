@@ -184,15 +184,26 @@ After interruption, clone/fetch the same branch, run `prepare_sources.py` again,
 
 ## Official SWE-bench scoring
 
-This project does not reimplement the SWE-bench scorer. After rollouts, install the official harness from `requirements.txt`, keep the generated `prediction.jsonl`/patch artifacts under the ignored run directories, and invoke the official harness for the selected instance IDs. A typical evaluation command is:
+This project does not reimplement the SWE-bench scorer. For the current formal
+artifact, use the shared adapter around the validated historical oracle. It
+keeps one prediction file per rollout, skips empty patches, invokes the official
+`swebench eval` path one instance at a time, and reads `resolved` only from the
+official instance `report.json`:
 
 ```bash
-python -m swebench.harness.run_evaluation \
-  --dataset_name princeton-nlp/SWE-bench_Verified \
-  --predictions_path runs/harness-v5-1-structured-python-validation-feedback-three-small-tasks/<run-dir>/prediction.jsonl \
-  --instance_ids pallets__flask-5014 \
-  --max_workers 1 \
-  --run_id harness-v5-1-structured-python-validation-feedback-three-small-tasks
+python oracle/prepare_predictions.py --experiment <formal-root>
+python oracle/run_official_swebench.py \
+  --experiment <formal-root> \
+  --task-metadata <verified-task-json> \
+  --output <oracle-output-root>
+python oracle/summarize_oracle.py \
+  --experiment <formal-root> \
+  --oracle <oracle-output-root>
 ```
 
-Old Harness v2, v3, v3.1, v3.2, v4, or v5 results must not be mixed with v5.1 results: validation-feedback semantics, experiment ID, and output directory are versioned separately. The official dataset guide and dataset card define the benchmark fields and split used here: [SWE-bench dataset guide](https://github.com/SWE-bench/SWE-bench/blob/main/docs/guides/datasets.md) and [SWE-bench Verified](https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified).
+The adapter also reads historical `input/runs/` artifacts without mapping
+Atomic or Restricted Python to G1/G2/G4. Docker/setup/harness failures remain
+infrastructure outcomes rather than unresolved patches. The official dataset
+guide and dataset card define the benchmark fields and split used here:
+[SWE-bench dataset guide](https://github.com/SWE-bench/SWE-bench/blob/main/docs/guides/datasets.md)
+and [SWE-bench Verified](https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified).
