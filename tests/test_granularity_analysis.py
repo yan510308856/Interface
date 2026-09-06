@@ -6,9 +6,32 @@ import unittest
 from pathlib import Path
 
 from analysis.analyze_granularity import summarize
+from analysis.loop_metrics import trajectory_loop_metrics
 
 
 class GranularityAnalysisTests(unittest.TestCase):
+    def test_loop_metrics_are_analysis_only_and_detect_retries_and_progress(self):
+        events = [
+            {"event": "backend_operation", "action_id": "1", "operation": "read_file", "arguments": {"path": "a.py", "start_line": 1, "end_line": 3}, "status": "success"},
+            {"event": "backend_operation", "action_id": "1", "operation": "read_file", "arguments": {"path": "a.py", "start_line": 2, "end_line": 4}, "status": "success"},
+            {"event": "backend_operation", "action_id": "2", "operation": "search_text", "arguments": {"query": "missing"}, "status": "error", "error": "No such file or directory"},
+            {"event": "backend_operation", "action_id": "3", "operation": "search_text", "arguments": {"query": "missing"}, "status": "error", "error": "No such file or directory"},
+            {"event": "backend_operation", "action_id": "4", "operation": "run_process", "arguments": {"argv": ["python", "-c", "x"]}, "status": "denied", "error": "command is not allowed"},
+            {"event": "backend_operation", "action_id": "5", "operation": "run_process", "arguments": {"argv": ["python", "-c", "x"]}, "status": "denied", "error": "command is not allowed"},
+            {"event": "backend_operation", "action_id": "6", "operation": "replace_text", "arguments": {"path": "a.py", "old_text": "a", "new_text": "b"}, "status": "success"},
+            {"event": "backend_operation", "action_id": "7", "operation": "run_process", "arguments": {"argv": ["pytest", "-q"]}, "status": "success", "result": {"exit_code": 0}},
+            *({"event": "interface_action", "action_id": str(index), "status": "ok"} for index in range(1, 8)),
+        ]
+        metrics = trajectory_loop_metrics(events)
+
+        self.assertEqual(2, metrics["repeated_identical_operation_count"])
+        self.assertEqual(1, metrics["repeated_read_overlap_count"])
+        self.assertEqual(1, metrics["repeated_identical_search_count"])
+        self.assertEqual(1, metrics["enoent_retry_count"])
+        self.assertEqual(1, metrics["permission_denial_retry_count"])
+        self.assertEqual(1, metrics["actions_since_last_edit"])
+        self.assertEqual(0, metrics["actions_since_last_successful_test"])
+
     def test_analysis_reports_capacity_and_manipulation_metrics(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

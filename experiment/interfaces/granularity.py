@@ -48,7 +48,14 @@ def build_tools(max_ops_per_action: int) -> list[dict[str, Any]]:
                         "maxItems": max_ops_per_action,
                         "items": {"oneOf": operation_variants},
                     },
-                    "finish": {"type": "string"},
+                    "finish": {
+                        "type": "string",
+                        "enum": ["done"],
+                        "description": (
+                            "Terminal finish signal. Use exactly finish=done with "
+                            "an empty operations list; do not combine it with operations."
+                        ),
+                    },
                 },
                 "required": ["operations"],
                 "additionalProperties": False,

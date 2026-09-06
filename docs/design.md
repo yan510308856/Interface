@@ -34,6 +34,28 @@ Formal output roots preserve plans, manifests, run metadata, trajectories,
 patches, server configuration, attack placements, and Git provenance. Official
 SWE-bench grading remains a later explicit step through the official harness.
 
+### Protocol and capability audit
+
+The only model-level terminal signal for `submit_action` is the structured
+terminal action `{"operations": [], "finish": "done"}`. The schema exposes
+`finish` as an enum containing only `done`, and plain text or exhausting a
+budget is not treated as a model finish. Each run records one of
+`model_finish`, `action_budget_exhausted`, `operation_budget_exhausted`,
+`timeout`, `model_api_error`, or `runner_error` as `termination_reason`.
+
+The current `run_process` permission contract is unchanged: `argv` must begin
+with `python -m pytest`, `python3 -m pytest`, or `pytest`; execution uses
+`shell=False`. Commands such as `python -c`, `python3 script.py`, `bash -c`,
+`cat`, and `echo` remain denied. Denials report the supported prefixes to the
+model. The formal operation set has no `list_files`, `list_directory`, or
+standalone glob operation. `search_text.glob` filters a text search and is not
+a repository enumeration primitive, so navigation remains a capability gap;
+this protocol does not add a new operation.
+
+Trajectory analysis reports repeated-operation/search/read-overlap retries,
+ENOENT and permission-denial retries, and progress since the last successful
+edit or test. These are analysis-only metrics and never stop or alter a run.
+
 Restricted Python remains available only for historical reproducibility. The
 older sections below describe those legacy protocols and must not be mixed
 with the new G1/G2/G4 trajectories.

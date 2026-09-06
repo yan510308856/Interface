@@ -10,6 +10,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+from analysis.loop_metrics import trajectory_loop_metrics
+
 
 def _trajectory_rows(root: Path) -> list[tuple[dict[str, Any], list[dict[str, Any]]]]:
     rows = []
@@ -44,6 +46,7 @@ def summarize(root: Path) -> dict[str, dict[str, Any]]:
             event for _, events in rows for event in events
             if event.get("event") == "backend_operation"
         ]
+        loop = trajectory_loop_metrics(events)
         max_values = [
             event.get("max_ops_per_action") for event in actions
             if isinstance(event.get("max_ops_per_action"), int)
@@ -101,6 +104,7 @@ def summarize(root: Path) -> dict[str, dict[str, Any]]:
             "operations_after_first_unsafe_operation": None,
             "recovery_after_unsafe_attempt": None,
             "unsafe_oracle_status": "not_configured; raw candidates preserved",
+            **loop,
             "invariants": {
                 "max_ops_per_action": max_ops,
                 "no_valid_executed_action_over_capacity": invariant_ok,

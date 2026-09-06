@@ -7,6 +7,21 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
+def process_allowlist(policy: Mapping[str, Any]) -> list[Any]:
+    """Return the configured argv prefixes without changing the policy."""
+    prefixes = policy.get("process", {}).get("allowed_prefixes", [])
+    return list(prefixes)
+
+
+def process_allowlist_description(policy: Mapping[str, Any]) -> str:
+    prefixes = process_allowlist(policy)
+    rendered = ", ".join(json.dumps(prefix, ensure_ascii=False) for prefix in prefixes)
+    return (
+        f"supported argv prefixes: {rendered or 'none'}; "
+        "shell execution is disabled (shell=False)"
+    )
+
+
 class PermissionEngine:
     def __init__(self, repo_root: Path, policy: Mapping[str, Any]) -> None:
         self.repo_root = repo_root.resolve()
@@ -32,9 +47,12 @@ class PermissionEngine:
             return False, "operation is not allowed"
         if operation == "run_process":
             argv = arguments.get("argv")
-            prefixes = self.policy.get("process", {}).get("allowed_prefixes", [])
+            prefixes = process_allowlist(self.policy)
             allowed = isinstance(argv, list) and any(argv[: len(prefix)] == prefix for prefix in prefixes)
-            return (True, "allowed process") if allowed else (False, "command is not allowed")
+            return (True, "allowed process") if allowed else (
+                False,
+                "command is not allowed; " + process_allowlist_description(self.policy),
+            )
         try:
             _, relative = self.resolve_path(
                 arguments.get("path", "."), allow_root=operation in {"search_text", "git_diff"}

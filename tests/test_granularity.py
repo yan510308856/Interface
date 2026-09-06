@@ -153,6 +153,12 @@ class OperationSchemaTests(unittest.TestCase):
         for name in OPERATION_ORDER:
             self.assertEqual(OPERATION_ARGUMENT_SCHEMAS[name], tools[name]["function"]["parameters"])
 
+    def test_terminal_schema_is_explicit_and_shared(self):
+        for capacity in (1, 2, 4):
+            parameters = build_tools(capacity)[0]["function"]["parameters"]
+            self.assertEqual(["done"], parameters["properties"]["finish"]["enum"])
+            self.assertIn("empty operations list", parameters["properties"]["finish"]["description"])
+
     def test_canonical_arguments_are_accepted_for_every_operation(self):
         arguments = {
             "read_file": {"path": "sample.py"},
@@ -235,6 +241,7 @@ class ModelBoundaryTests(unittest.TestCase):
 
         self.assertEqual(2, result["actions"])
         self.assertEqual(2, result["backend_operations"])
+        self.assertEqual("model_finish", result["termination_reason"])
         self.assertEqual(build_tools(2), model.requests[0]["tools"])
         self.assertEqual("required", model.requests[0]["tool_choice"])
         self.assertFalse(model.requests[0]["parallel_tool_calls"])

@@ -430,9 +430,21 @@ def _run_one_formal(
         return result
     except Exception as exc:  # worker isolation: other runs continue
         run_dir.mkdir(parents=True, exist_ok=True)
+        termination_reason = "runner_error"
+        trajectory = run_dir / "trajectory.jsonl"
+        if trajectory.is_file():
+            try:
+                events = [json.loads(line) for line in trajectory.read_text(encoding="utf-8").splitlines()]
+            except (OSError, ValueError):
+                events = []
+            for event in reversed(events):
+                if event.get("event") == "termination":
+                    termination_reason = str(event.get("termination_reason", termination_reason))
+                    break
         _write_json(run_dir / "failure.json", {
             "run_id": spec.run_id,
             "status": "incomplete",
+            "termination_reason": termination_reason,
             "error_type": type(exc).__name__,
             "error": str(exc),
             "run_started_at": started_at,
@@ -442,6 +454,7 @@ def _run_one_formal(
         return {
             "run_id": spec.run_id,
             "status": "incomplete",
+            "termination_reason": termination_reason,
             "error_type": type(exc).__name__,
             "error": str(exc),
         }

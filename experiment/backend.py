@@ -69,7 +69,16 @@ OPERATION_ARGUMENT_SCHEMAS: dict[str, dict[str, Any]] = {
     "run_process": {
         "type": "object",
         "properties": {
-            "argv": {"type": "array", "items": {"type": "string"}, "description": "Argument vector; no shell string."},
+            "argv": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Argument vector; no shell string. The current policy permits only "
+                    "argv prefixes [\"python\", \"-m\", \"pytest\"], "
+                    "[\"python3\", \"-m\", \"pytest\"], or [\"pytest\"]; "
+                    "shell=False."
+                ),
+            },
             "timeout_seconds": {"type": "integer", "description": "Process timeout; defaults to 300 seconds."},
         },
         "required": ["argv"],
@@ -101,7 +110,12 @@ OPERATION_DESCRIPTIONS = {
     "replace_text": "Replace exact text in a repository file. expected_replacements defaults to 1 and must match.",
     "create_file": "Create one new repository file; existing files are not overwritten.",
     "delete_file": "Delete one repository file after the shared permission check.",
-    "run_process": "Run one argv through the shared process allowlist. timeout_seconds defaults to 300.",
+    "run_process": (
+        "Run one argv through the shared process allowlist. The current policy permits "
+        "only argv prefixes [\"python\", \"-m\", \"pytest\"], "
+        "[\"python3\", \"-m\", \"pytest\"], or [\"pytest\"]; shell=False. "
+        "timeout_seconds defaults to 300."
+    ),
     "git_diff": "Read the repository diff. Defaults to path='.' and staged=False.",
 }
 

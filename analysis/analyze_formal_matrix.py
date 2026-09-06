@@ -11,6 +11,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+from analysis.loop_metrics import trajectory_loop_metrics
+
 
 def _read_json(path: Path, default: Any = None) -> Any:
     try:
@@ -54,11 +56,13 @@ def _run_row(root: Path, spec: dict[str, Any], oracle: dict[str, dict[str, Any]]
     run_id = str(spec["run_id"])
     run_dir = root / "runs" / run_id
     result = _read_json(run_dir / "result.json", {}) or {}
+    failure = _read_json(run_dir / "failure.json", {}) or {}
     metadata = _read_json(run_dir / "metadata.json", {}) or {}
     marker = _read_json(run_dir / "COMPLETE.json", {}) or {}
     events = _events(run_dir / "trajectory.jsonl")
     actions = [event for event in events if event.get("event") in {"interface_action", "action"}]
     backend = [event for event in events if event.get("event") == "backend_operation"]
+    loop = trajectory_loop_metrics(events)
     visible_actions = [event for event in actions if event.get("status") != "finish"]
     sizes = [int(event.get("operations_executed", event.get("backend_operations_executed", 0))) for event in actions]
     visible_sizes = [
@@ -85,6 +89,7 @@ def _run_row(root: Path, spec: dict[str, Any], oracle: dict[str, dict[str, Any]]
         "rollout": spec.get("rollout", result.get("rollout", result.get("seed"))),
         "scheduler_index": spec.get("scheduler_index", result.get("scheduler_index")),
         "status": "completed" if completed else "incomplete",
+        "termination_reason": result.get("termination_reason") or failure.get("termination_reason"),
         "actions": action_count,
         "backend_ops": backend_count,
         "ops_per_observation": round(backend_count / model_visible, 6) if model_visible else 0.0,
@@ -110,6 +115,7 @@ def _run_row(root: Path, spec: dict[str, Any], oracle: dict[str, dict[str, Any]]
         "resolved": oracle_row.get("resolved"),
         "evaluator_status": oracle_row.get("evaluator_status"),
         "oracle_run_id": oracle_row.get("oracle_run_id"),
+        **loop,
     }
 
 
@@ -150,6 +156,16 @@ def analyze(root: Path, oracle_path: Path | None = None) -> tuple[list[dict[str,
             "attack_success": sum(row["attack_success"] is True for row in group),
             "resolved": sum(row["resolved"] is True for row in group),
             "action_size_distribution": json.dumps(dict(sorted(sizes.items())), sort_keys=True),
+            "repeated_identical_operation_count": sum(row["repeated_identical_operation_count"] for row in group),
+            "max_repeated_identical_operation_streak": max(row["max_repeated_identical_operation_streak"] for row in group) if group else 0,
+            "repeated_read_overlap_count": sum(row["repeated_read_overlap_count"] for row in group),
+            "max_repeated_read_overlap_streak": max(row["max_repeated_read_overlap_streak"] for row in group) if group else 0,
+            "repeated_identical_search_count": sum(row["repeated_identical_search_count"] for row in group),
+            "max_repeated_identical_search_streak": max(row["max_repeated_identical_search_streak"] for row in group) if group else 0,
+            "enoent_retry_count": sum(row["enoent_retry_count"] for row in group),
+            "permission_denial_retry_count": sum(row["permission_denial_retry_count"] for row in group),
+            "max_actions_since_last_edit": max(row["max_actions_since_last_edit"] for row in group) if group else 0,
+            "max_actions_since_last_successful_test": max(row["max_actions_since_last_successful_test"] for row in group) if group else 0,
         })
     return rows, summaries
 
