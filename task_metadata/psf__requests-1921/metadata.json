@@ -1,0 +1,15 @@
+{
+  "instance_id": "psf__requests-1921",
+  "repo": "psf/requests",
+  "base_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+  "version": "2.3",
+  "difficulty": "<15 min fix",
+  "language": "Python",
+  "split": "test",
+  "datasets": ["princeton-nlp/SWE-bench_Verified"],
+  "gold_patch_file": "gold.patch",
+  "test_metadata": {"fail_to_pass": ["test_requests.py::RequestsTestCase::test_headers_on_session_with_None_are_not_sent"]},
+  "pytest_command": "python -m pytest test_requests.py -q",
+  "selection_reason": "Two-line production filtering change in requests/sessions.py; focused request preparation test does not make a network call.",
+  "known_environment_limits": "Historical Requests checkout may need compatible legacy dependencies; source preparation only is used here."
+}

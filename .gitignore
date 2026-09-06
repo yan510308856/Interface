@@ -7,6 +7,8 @@ __pycache__/
 .env
 .env.*
 runs/
+oracle/
+sources/
 results/
 swebench_repos/
 *.safetensors

@@ -1,0 +1,23 @@
+{
+  "instance_id": "pallets__flask-5014",
+  "repo": "pallets/flask",
+  "base_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+  "version": "2.3",
+  "difficulty": "<15 min fix",
+  "language": "Python",
+  "split": "test",
+  "datasets": ["princeton-nlp/SWE-bench_Verified"],
+  "problem_statement_file": "problem_statement.md",
+  "gold_patch_file": "gold.patch",
+  "test_patch_file": "test.patch",
+  "gold_patch_files": ["src/flask/blueprints.py"],
+  "gold_patch_lines": {"additions": 3, "deletions": 0},
+  "test_patch_files": ["tests/test_blueprints.py"],
+  "test_metadata": {
+    "fail_to_pass": ["tests/test_blueprints.py::test_empty_name_not_allowed"],
+    "pass_to_pass_source": "official SWE-bench_Verified row; not duplicated in rollout context"
+  },
+  "pytest_command": "python -m pytest tests/test_blueprints.py -q",
+  "selection_reason": "Different repository from the other two selections; a one-condition validation in Blueprint construction with a concentrated implementation and test change.",
+  "known_environment_limits": "Flask's historical dependency set may need an isolated compatible Python environment; no network or service is needed by the focused test."
+}

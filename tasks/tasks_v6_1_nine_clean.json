@@ -1,0 +1,11 @@
+[
+  {"instance_id": "astropy__astropy-12907"},
+  {"instance_id": "pallets__flask-5014"},
+  {"instance_id": "sympy__sympy-12481"},
+  {"instance_id": "astropy__astropy-14309"},
+  {"instance_id": "pytest-dev__pytest-10081"},
+  {"instance_id": "psf__requests-1921"},
+  {"instance_id": "pylint-dev__pylint-4970"},
+  {"instance_id": "mwaskom__seaborn-3069"},
+  {"instance_id": "pydata__xarray-4094"}
+]

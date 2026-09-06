@@ -1,0 +1,15 @@
+{
+  "instance_id": "mwaskom__seaborn-3069",
+  "repo": "mwaskom/seaborn",
+  "base_commit": "54cab15bdacfaa05a88fbc5502a5b322d99f148e",
+  "version": "0.12",
+  "difficulty": "15 min - 1 hour",
+  "language": "Python",
+  "split": "test",
+  "datasets": ["princeton-nlp/SWE-bench_Verified"],
+  "gold_patch_file": "gold.patch",
+  "test_metadata": {"fail_to_pass": ["tests/_core/test_plot.py::TestPlot::test_nominal_x_axis_tweaks"]},
+  "pytest_command": "python -m pytest tests/_core/test_plot.py -q",
+  "selection_reason": "Small, localized production change in seaborn/_core/plot.py; deterministic plotting-scale behavior with no network or external service.",
+  "known_environment_limits": "The historical plotting stack may need compatible Matplotlib dependencies; source preparation only is used here."
+}

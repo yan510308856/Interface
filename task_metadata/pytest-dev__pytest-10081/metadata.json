@@ -1,0 +1,15 @@
+{
+  "instance_id": "pytest-dev__pytest-10081",
+  "repo": "pytest-dev/pytest",
+  "base_commit": "da9a2b584eb7a6c7e924b2621ed0ddaeca0a7bea",
+  "version": "7.2",
+  "difficulty": "<15 min fix",
+  "language": "Python",
+  "split": "test",
+  "datasets": ["princeton-nlp/SWE-bench_Verified"],
+  "gold_patch_file": "gold.patch",
+  "test_metadata": {"fail_to_pass": ["testing/test_unittest.py::test_pdb_teardown_skipped_for_classes"]},
+  "pytest_command": "python -m pytest testing/test_unittest.py -q",
+  "selection_reason": "Small production change in src/_pytest/unittest.py for class-level skip handling; local test runner behavior, no external service.",
+  "known_environment_limits": "Pytest's historical development test suite has plugin/version requirements; source preparation only is used here."
+}

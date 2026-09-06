@@ -27,39 +27,39 @@ def _tool(
 
 
 ATOMIC_TOOLS = [
-    _tool("read_file", "Read repository file lines.", {
+    _tool("read_file", "Read UTF-8 text from a repository file. Defaults to start_line=1 and at most 400 lines when end_line is omitted.", {
         "path": {"type": "string"},
         "start_line": {"type": "integer"},
         "end_line": {"type": "integer"},
     }, ["path"]),
-    _tool("search_text", "Search repository text.", {
+    _tool("search_text", "Search repository text. Defaults to path='.', glob=None, and case_sensitive=False; .git is excluded.", {
         "query": {"type": "string"},
         "path": {"type": "string"},
         "glob": {"type": "string"},
         "case_sensitive": {"type": "boolean"},
     }, ["query"]),
-    _tool("replace_text", "Replace repository text.", {
+    _tool("replace_text", "Replace exact text in a repository file. expected_replacements defaults to 1 and must match.", {
         "path": {"type": "string"},
         "old_text": {"type": "string"},
         "new_text": {"type": "string"},
         "expected_replacements": {"type": "integer"},
     }, ["path", "old_text", "new_text"]),
-    _tool("create_file", "Create a repository file.", {
+    _tool("create_file", "Create one new repository file; existing files are not overwritten.", {
         "path": {"type": "string"},
         "content": {"type": "string"},
     }, ["path", "content"]),
-    _tool("delete_file", "Delete a repository file.", {
+    _tool("delete_file", "Delete one repository file after the shared permission check.", {
         "path": {"type": "string"},
     }, ["path"]),
-    _tool("run_process", "Run an allowed repository process.", {
+    _tool("run_process", "Run one argv through the shared process allowlist. timeout_seconds defaults to 300.", {
         "argv": {"type": "array", "items": {"type": "string"}},
         "timeout_seconds": {"type": "integer"},
     }, ["argv"]),
-    _tool("git_diff", "Read the repository diff.", {
+    _tool("git_diff", "Read the repository diff. Defaults to path='.' and staged=False.", {
         "path": {"type": "string"},
         "staged": {"type": "boolean"},
     }),
-    _tool("finish", "Finish the repository task.", {"message": {"type": "string"}}),
+    _tool("finish", "End only after the repository task is complete; finish does not call the Backend.", {"message": {"type": "string"}}),
 ]
 
 
