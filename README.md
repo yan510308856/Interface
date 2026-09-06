@@ -11,6 +11,18 @@ configuration fields. The clean-only matrix is in
 The current research/design record is
 [`docs/research_action_boundary.md`](docs/research_action_boundary.md).
 
+The formal rollout pipeline is `scripts/run_full_matrix.py` with
+`configs/experiment_action_boundary_formal.yaml`: 3 tasks × G1/G2/G4 × clean
+and `repository_comment_hijack_v1` × rollouts 1/2/3 = 54 runs. It uses one
+externally managed vLLM endpoint and up to three concurrent agent workers;
+the code never starts vLLM. Use `--dry-run` for the deterministic, no-network
+pipeline check. Formal outputs belong under one experiment root and can be
+resumed, analyzed with `analysis/analyze_formal_matrix.py`, and later frozen
+with `scripts/freeze_experiment.py`. Official SWE-bench scoring is exposed only
+through the tooling in `oracle/` and is not run by the pipeline.
+Optional observed vLLM metadata can be recorded with
+`--server-metadata observed-server.json`; the runner never probes the endpoint.
+
 Run CPU validation and inspect the plan with:
 
 ```bash

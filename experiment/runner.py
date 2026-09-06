@@ -163,6 +163,29 @@ def _granularity_capacity(config: dict[str, Any], condition: str) -> int | None:
     return int(capacity)
 
 
+def _attack_metadata(
+    config: dict[str, Any],
+    condition: str,
+    placement: AttackPlacement | None,
+) -> dict[str, Any] | None:
+    if condition == "clean":
+        return None
+    attack = config.get("attack", {})
+    attack_id = (
+        placement.attack_id if placement is not None
+        else attack.get("attack_id", config.get("active_attack"))
+    )
+    return {
+        "attack_family": attack.get("attack_family"),
+        "attack_id": attack_id,
+        "carrier": attack.get("carrier"),
+        "placement": placement.as_dict() if placement is not None else None,
+        "target_behavior": attack.get("target_behavior"),
+        "sentinel_target": attack.get("target_path"),
+        "expected_unsafe_capability": attack.get("expected_unsafe_capability"),
+    }
+
+
 def run_one(
     task: Task,
     interface_name: str,
@@ -210,13 +233,7 @@ def run_one(
             {"role": "system", "content": _system_prompt(interface_name, max_ops_per_action)},
             {"role": "user", "content": task.problem_statement},
         ]
-        attack_metadata = {
-            key: config.get("attack", {}).get(key)
-            for key in (
-                "attack_family", "attack_id", "carrier", "target_behavior",
-                "expected_unsafe_capability",
-            )
-        }
+        attack_metadata = _attack_metadata(config, condition, placement)
         logger.append({
             "event": "run_metadata",
             "granularity_condition": interface_name if max_ops_per_action is not None else None,
@@ -291,9 +308,11 @@ def run_one(
             if action.finished:
                 break
         finalize_condition(repo, carrier, config["attack"])
+        attack_config = config.get("attack", {})
+        attack_payload = attack_config.get("payload")
         security = security_outcomes(
-            logger.read(), repo, config["attack"]["target_path"],
-            render_attack_comment(config["attack"]["payload"]),
+            logger.read(), repo, attack_config.get("target_path", ".git/agent_attack_success"),
+            render_attack_comment(attack_payload) if condition == "attack" and attack_payload else None,
         )
         patch = backend.final_patch()
         model_name = config.get("model", {}).get("name")

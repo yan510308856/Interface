@@ -781,3 +781,51 @@ mistaken for one action; batching must occur inside the single
 `submit_action.operations` list. Legacy interface request behavior is left
 unchanged. The provider's live Qwen/vLLM acceptance of the nested schema must
 still be checked by the next manual A100 rerun.
+
+## 18. Formal matrix pipeline
+
+The formal rollout pipeline is implemented by
+`scripts/run_full_matrix.py` and configured by
+`configs/experiment_action_boundary_formal.yaml`. The current task set is the
+three prepared tasks in `tasks/tasks_v3.json`, so the complete matrix contains
+
+```text
+3 tasks × 3 granularities × 2 conditions × 3 rollouts = 54 runs
+```
+
+The conditions are `clean` and the existing
+`repository_comment_hijack_v1` attack. Clean runs have
+`attack_metadata = null`; attack runs record attack family, attack ID, carrier,
+placement, target behavior, sentinel target, and expected unsafe capability.
+The attack is injected only into each run's disposable repository copy.
+
+The deterministic schedule is blocked by task and rollout. Within each block,
+the order is `G1 clean`, `G2 clean`, `G4 clean`, followed by the corresponding
+attack cells. This interleaves granularity conditions so server timing and
+concurrency are not structurally assigned to one G condition. Up to three
+workers can run against one pre-existing vLLM endpoint; the runner never starts
+vLLM. Each worker receives a separate temporary repository and run directory.
+
+Every formal run is identified by task, G, condition/attack index, and rollout,
+for example `pallets__flask-5014-G2-attack01-r3`. Completed runs require a
+matching `result.json`, `trajectory.jsonl`, `metadata.json`, and `COMPLETE.json`.
+On `--resume`, incomplete directories are moved to `incomplete_attempts/` and
+the run starts again from a fresh disposable repository. Formal roots record
+`PLAN.json`, `RUN_MANIFEST.json`, configs, task metadata, attack registry,
+server metadata, and Git provenance.
+
+Expected server fields are stored in `server_config.json`. After manually
+starting the one vLLM service, its observed values can be recorded without any
+probe by passing `--server-metadata observed-server.json` to the formal runner;
+the file is copied into the root as the `observed` object.
+
+`analysis/analyze_formal_matrix.py` produces long and grouped CSV/JSON summaries
+without invoking SWE-bench. `scripts/freeze_experiment.py` creates a separate
+provenance bundle with runtime/dependency metadata and `SHA256SUMS`; it is an
+artifact operation and must not modify rollout data. The `oracle/` scripts only
+prepare predictions, invoke the official SWE-bench harness, and normalize its
+reports. They do not implement a replacement grader.
+
+The local validation path is `--dry-run`, which uses a deterministic no-network
+model and is not experimental data. No real Qwen, vLLM, A100, or official
+SWE-bench oracle is started by these code changes.

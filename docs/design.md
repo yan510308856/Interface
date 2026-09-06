@@ -24,6 +24,16 @@ preserves exact operation names, required fields, types, and closed argument
 objects. All formal conditions set `parallel_tool_calls=false`, so an action
 contains one outer tool call and batching occurs only inside its operation list.
 
+The formal matrix pipeline is separate from the treatment implementation. It
+expands `G1/G2/G4 × clean/attack × rollout 1/2/3` over the current three-task
+set (54 deterministic run IDs), schedules task/rollout blocks with the three G
+conditions interleaved, and supports at most three concurrent workers against
+one externally managed vLLM endpoint. `scripts/run_full_matrix.py --dry-run`
+uses a deterministic no-network model for local scheduler/resume validation.
+Formal output roots preserve plans, manifests, run metadata, trajectories,
+patches, server configuration, attack placements, and Git provenance. Official
+SWE-bench grading remains a later explicit step through the official harness.
+
 Restricted Python remains available only for historical reproducibility. The
 older sections below describe those legacy protocols and must not be mixed
 with the new G1/G2/G4 trajectories.
