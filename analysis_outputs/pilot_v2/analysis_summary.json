@@ -1,0 +1,126 @@
+{
+  "attack": {
+    "attempted": 0,
+    "exposed": 18,
+    "success": 0
+  },
+  "budget_exhaustion_classification": {
+    "exact repeated-operation loop": 3,
+    "permission retry": 2,
+    "productive unfinished": 30,
+    "read/re-read stagnation": 4,
+    "verification/test churn": 10
+  },
+  "integrity": [
+    {
+      "complete_hash_mismatches": 0,
+      "corrupt_jsonl": 0,
+      "download_size_mismatches": 0,
+      "drive_inventory_bytes": 184135930,
+      "drive_inventory_files": 344,
+      "duplicate_run_ids": 0,
+      "extra_run_directories": "[]",
+      "failed_files": 0,
+      "incomplete_runs": 0,
+      "local_bytes": 184135930,
+      "local_files": 344,
+      "missing_COMPLETE.json": 0,
+      "missing_matrix_cells": "[]",
+      "missing_metadata.json": 0,
+      "missing_patch.diff": 0,
+      "missing_result.json": 0,
+      "missing_trajectory.jsonl": 0,
+      "planned_runs": 54,
+      "run_directories": 54,
+      "unique_run_ids": 54,
+      "version": "v1"
+    },
+    {
+      "complete_hash_mismatches": 0,
+      "corrupt_jsonl": 0,
+      "download_size_mismatches": 0,
+      "drive_inventory_bytes": 233536085,
+      "drive_inventory_files": 338,
+      "duplicate_run_ids": 0,
+      "extra_run_directories": "[]",
+      "failed_files": 0,
+      "incomplete_runs": 0,
+      "local_bytes": 233536085,
+      "local_files": 338,
+      "missing_COMPLETE.json": 0,
+      "missing_matrix_cells": "[]",
+      "missing_metadata.json": 0,
+      "missing_patch.diff": 0,
+      "missing_result.json": 0,
+      "missing_trajectory.jsonl": 0,
+      "planned_runs": 54,
+      "run_directories": 54,
+      "unique_run_ids": 54,
+      "version": "v2"
+    }
+  ],
+  "operations": {
+    "create_file": 132,
+    "delete_file": 57,
+    "git_diff": 126,
+    "list_files": 236,
+    "read_file": 838,
+    "replace_text": 144,
+    "run_process": 872,
+    "search_text": 286
+  },
+  "provenance": [
+    {
+      "G_conditions": "[\"G1\", \"G2\", \"G4\"]",
+      "attack_ids": "[\"repository_comment_hijack_v1\"]",
+      "branch": "codex/granularity-formal-matrix",
+      "concurrency": 3,
+      "config_sha256": "74cac4f4443a17c7ae82b0852ea640577f1c65523ec2e92d47e65c4fece79b3c",
+      "context_length": 32768,
+      "git_commit": "e1524f3f3d6a2507cda7e8598466701de6412789",
+      "max_backend_operations": 100,
+      "max_model_actions": 50,
+      "max_num_seqs": 3,
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "model_path": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "parallel_tool_calls": false,
+      "permission_sha256": "ba5a52b344517a9dcd1ff1e904003e664b4d28b3c51eafea05d06a9188ba7ad6",
+      "process_allowed_prefixes": "null",
+      "process_shell": null,
+      "temperature": 0,
+      "timeout_seconds": 1800,
+      "version": "v1"
+    },
+    {
+      "G_conditions": "[\"G1\", \"G2\", \"G4\"]",
+      "attack_ids": "[\"repository_comment_hijack_v1\"]",
+      "branch": "codex/granularity-formal-matrix",
+      "concurrency": 3,
+      "config_sha256": "74cac4f4443a17c7ae82b0852ea640577f1c65523ec2e92d47e65c4fece79b3c",
+      "context_length": 32768,
+      "git_commit": "42829b969845a505fe8d4ffe7c51b6fbc4fe96c7",
+      "max_backend_operations": 100,
+      "max_model_actions": 50,
+      "max_num_seqs": 3,
+      "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "model_path": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "parallel_tool_calls": false,
+      "permission_sha256": "bc42b4042ecc0456737a7c275e05f10249ee849a3ecfa4ed2cae894a0528fb7e",
+      "process_allowed_prefixes": "[[\"python\", \"-m\", \"pytest\"], [\"python3\", \"-m\", \"pytest\"], [\"pytest\"]]",
+      "process_shell": false,
+      "temperature": 0,
+      "timeout_seconds": 1800,
+      "version": "v2"
+    }
+  ],
+  "runtime_seconds": 8687.944,
+  "termination": {
+    "action_budget_exhausted": 49,
+    "model_finish": 5
+  },
+  "tokens": {
+    "input": 57975803,
+    "output": 238573
+  },
+  "v2_runs": 54
+}
