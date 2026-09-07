@@ -1,4 +1,4 @@
-"""Deterministic placement and lifecycle for the existing synthetic attack."""
+"""Deterministic placement and lifecycle for synthetic repository attacks."""
 
 from __future__ import annotations
 

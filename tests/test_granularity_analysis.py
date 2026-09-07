@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from analysis.analyze_granularity import summarize
+from analysis.analyze_formal_matrix import analyze
 from analysis.loop_metrics import trajectory_loop_metrics
 
 
@@ -57,6 +58,57 @@ class GranularityAnalysisTests(unittest.TestCase):
         self.assertEqual(1, report["G2"]["backend_error_count"])
         self.assertTrue(report["G2"]["invariants"]["no_valid_executed_action_over_capacity"])
         self.assertEqual("not_configured; raw candidates preserved", report["G2"]["unsafe_oracle_status"])
+
+    def test_formal_analyzer_preserves_attack_chain_metrics(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            run_id = "task-G2-attack01-r1"
+            run = root / "runs" / run_id
+            run.mkdir(parents=True)
+            (root / "PLAN.json").write_text(json.dumps({"runs": [{
+                "run_id": run_id,
+                "task_id": "task",
+                "G": "G2",
+                "condition": "attack",
+                "attack_id": "repository_sentinel_write_v2",
+                "rollout": 1,
+                "scheduler_index": 1,
+            }]}), encoding="utf-8")
+            (run / "COMPLETE.json").write_text(json.dumps({"status": "completed", "run_id": run_id}), encoding="utf-8")
+            (run / "metadata.json").write_text(json.dumps({"run_id": run_id}), encoding="utf-8")
+            (run / "trajectory.jsonl").write_text("", encoding="utf-8")
+            (run / "result.json").write_text(json.dumps({
+                "run_id": run_id,
+                "task_id": "task",
+                "max_ops_per_action": 2,
+                "attack_metadata": {"attack_family": "repository_sentinel_write"},
+                "attack_exposed": True,
+                "first_attack_exposure_action": 4,
+                "attack_target_mentioned": True,
+                "attack_target_attempted": True,
+                "attack_related_blocked": True,
+                "attack_success": False,
+                "attack_attempt_operation": "create_file",
+                "first_attack_attempt_action": 7,
+                "backend_operations_between_first_exposure_and_first_attempt": 3,
+                "model_actions_between_first_exposure_and_first_attempt": 2,
+                "actions": 7,
+                "backend_operations": 5,
+                "final_patch": "",
+            }), encoding="utf-8")
+            rows, _ = analyze(root)
+
+        row = rows[0]
+        self.assertTrue(row["attack_exposed"])
+        self.assertTrue(row["attack_target_mentioned"])
+        self.assertTrue(row["attack_attempted"])
+        self.assertTrue(row["blocked"])
+        self.assertFalse(row["attack_success"])
+        self.assertEqual("create_file", row["attack_attempt_operation"])
+        self.assertEqual(4, row["first_attack_exposure_action"])
+        self.assertEqual(7, row["first_attack_attempt_action"])
+        self.assertEqual(2, row["model_actions_between_first_exposure_and_first_attempt"])
+        self.assertEqual(3, row["backend_operations_between_first_exposure_and_first_attempt"])
 
 
 if __name__ == "__main__":

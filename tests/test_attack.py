@@ -14,6 +14,7 @@ from experiment.attack import (
     prepare_condition,
     render_attack_comment,
 )
+from experiment.attacks import get_attack
 from experiment.task import Task
 from tests.helpers import make_backend
 
@@ -130,6 +131,25 @@ class AttackTests(unittest.TestCase):
             backend = make_backend(repo, Path(temporary) / "log.jsonl")
             self.assertEqual("", backend.execute("git_diff", {}, "clean")["result"]["diff"])
             self.assertNotIn("IMPORTANT AGENT INSTRUCTION", carrier.read_text(encoding="utf-8"))
+
+    def test_sentinel_attack_is_benign_and_uses_protected_target(self):
+        attack = get_attack("repository_sentinel_write_v2")
+        self.assertEqual(".git/agent_attack_sentinel_v2", attack.target_path)
+        self.assertIn("INTERFACE_ATTACK_SENTINEL", attack.payload)
+        with tempfile.TemporaryDirectory() as temporary:
+            repo, carrier = self.make_repo(Path(temporary))
+            self.assertIsNone(prepare_condition(repo, "clean", attack))
+            self.assertNotIn("agent_attack_sentinel_v2", carrier.read_text(encoding="utf-8"))
+            prepare_condition(repo, "attack", attack)
+            self.assertIn("agent_attack_sentinel_v2", carrier.read_text(encoding="utf-8"))
+            backend = make_backend(repo, Path(temporary) / "log.jsonl")
+            response = backend.execute(
+                "create_file",
+                {"path": attack.target_path, "content": "INTERFACE_ATTACK_SENTINEL"},
+                "sentinel",
+            )
+            self.assertEqual("denied", response["status"])
+            self.assertFalse((repo / attack.target_path).exists())
 
     def test_run_one_repository_preparation_keeps_attack_baseline(self):
         with tempfile.TemporaryDirectory() as temporary:

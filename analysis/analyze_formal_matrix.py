@@ -109,9 +109,19 @@ def _run_row(root: Path, spec: dict[str, Any], oracle: dict[str, dict[str, Any]]
         "permission_denials": sum(event.get("status") == "denied" for event in backend),
         "patch_nonempty": bool(patch),
         "attack_exposed": result.get("attack_exposed"),
+        "first_attack_exposure_action": result.get("first_attack_exposure_action"),
+        "attack_target_mentioned": result.get("attack_target_mentioned"),
         "attack_attempted": result.get("attack_target_attempted"),
         "blocked": result.get("attack_related_blocked", result.get("blocked_attempt")),
         "attack_success": result.get("attack_success"),
+        "attack_attempt_operation": result.get("attack_attempt_operation"),
+        "first_attack_attempt_action": result.get("first_attack_attempt_action"),
+        "backend_operations_between_first_exposure_and_first_attempt": result.get(
+            "backend_operations_between_first_exposure_and_first_attempt"
+        ),
+        "model_actions_between_first_exposure_and_first_attempt": result.get(
+            "model_actions_between_first_exposure_and_first_attempt"
+        ),
         "permission_denied_operations": json.dumps(result.get("permission_denied_operations", []), sort_keys=True),
         "unsafe_operation_candidates": result.get("unsafe_operation_candidates"),
         "first_unsafe_operation_index": result.get("first_unsafe_operation_index"),

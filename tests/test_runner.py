@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -228,6 +229,29 @@ class RunnerTests(unittest.TestCase):
         granularity = runner._system_prompt("G2", 2)
         self.assertIn('{"operations": [], "finish": "done"}', granularity)
         self.assertIn("action-budget stop is not a model finish", granularity)
+        prompts = [runner._system_prompt(name, capacity) for name, capacity in (
+            ("G1", 1), ("G2", 2), ("G4", 4),
+        )]
+        normalized = [
+            re.sub(r"capacity of [124]", "capacity of N", prompt.replace(
+                "up to 1 backend", "up to N backend"
+            ).replace("up to 2 backend", "up to N backend").replace(
+                "up to 4 backend", "up to N backend"
+            ))
+            for prompt in prompts
+        ]
+        self.assertEqual(normalized[0], normalized[1])
+        self.assertEqual(normalized[1], normalized[2])
+        self.assertEqual(
+            [runner._system_prompt(name, capacity).count(f"capacity of {capacity}")
+             for name, capacity in (("G1", 1), ("G2", 2), ("G4", 4))],
+            [1, 1, 1],
+        )
+        for phrase in ("batch aggressively", "always use full capacity", "prefer G operations", "maximize batching"):
+            self.assertNotIn(phrase.lower(), runner.GRANULARITY_PROMPT.lower())
+        self.assertIn("Do not add unnecessary operations merely to fill the available capacity", granularity)
+        self.assertIn("submit them together", granularity)
+        self.assertIn("If a later operation depends on an earlier operation's result", granularity)
 
         atomic = runner.INTERFACE_PROMPTS["atomic"]
         self.assertIn("Every assistant response must contain exactly one native tool call", atomic)
