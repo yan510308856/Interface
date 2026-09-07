@@ -136,8 +136,8 @@ def build_formal_plan(
         raise ValueError(f"unknown formal task: {task_filter}")
 
     configured_conditions = tuple(config.get("conditions", ("clean", "attack")))
-    if "clean" not in configured_conditions:
-        raise ValueError("formal matrix requires clean condition")
+    if not configured_conditions:
+        raise ValueError("formal config requires at least one condition")
     attack_ids = _attack_ids(config) if "attack" in configured_conditions else []
     if "attack" in configured_conditions and not attack_ids:
         raise ValueError("attack condition requires attack_ids or active_attack")
@@ -266,11 +266,16 @@ def prepare_experiment_root(
     output_root.mkdir(parents=True, exist_ok=True)
     for directory in ("configs", "tasks", "attacks", "runs", "summaries", "incomplete_attempts"):
         (output_root / directory).mkdir()
+    schedule = (
+        "clean/attack condition-first order alternates by block"
+        if set(config.get("conditions", ())) == {"clean", "attack"}
+        else "configured condition order"
+    )
     _write_json(output_root / "PLAN.json", {
         "schema_version": "formal-granularity-v1",
         "experiment_id": config.get("experiment_id"),
         "run_count": len(plan),
-        "schedule": "task x rollout blocks; clean/attack condition-first order alternates by block; G1/G2/G4 stay together within each wave",
+        "schedule": f"task x rollout blocks; {schedule}; G1/G2/G4 stay together within each wave",
         "runs": [item.as_dict() for item in plan],
     })
     _write_json(output_root / "experiment_metadata.json", {

@@ -11,6 +11,7 @@ from experiment.runner import load_config
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "configs/experiment_action_boundary_calibration_v3.yaml"
+SANITY_CONFIG_PATH = ROOT / "configs/experiment_action_boundary_calibration_v3_sanity.yaml"
 RETIRED_TASKS = {
     "pallets__flask-5014",
     "sphinx-doc__sphinx-8265",
@@ -64,6 +65,37 @@ class PilotV3CalibrationTests(unittest.TestCase):
         )
         self.assertEqual(50, self.config["budget"]["max_model_actions"])
         self.assertEqual(100, self.config["budget"]["max_backend_operations"])
+
+    def test_v3_sanity_is_attack_only_r1_and_has_18_unique_runs(self):
+        config = load_config(SANITY_CONFIG_PATH)
+        plan, tasks, _ = build_formal_plan(config, ROOT)
+        run_ids = [item.run_id for item in plan]
+        self.assertEqual(6, len(tasks))
+        self.assertEqual(18, len(plan))
+        self.assertEqual(18, len(set(run_ids)))
+        self.assertEqual({"attack"}, {item.condition for item in plan})
+        self.assertEqual({1}, {item.rollout for item in plan})
+        self.assertEqual({"repository_sentinel_write_v2"}, {item.attack_id for item in plan})
+        self.assertEqual({"G1", "G2", "G4"}, {item.granularity for item in plan})
+        self.assertEqual({"G1": 6, "G2": 6, "G4": 6}, {
+            granularity: sum(item.granularity == granularity for item in plan)
+            for granularity in ("G1", "G2", "G4")
+        })
+        self.assertTrue(all(item.run_id.endswith("-attack01-r1") for item in plan))
+
+    def test_v3_sanity_preserves_finalized_v3_settings(self):
+        sanity = load_config(SANITY_CONFIG_PATH)
+        for key in (
+            "model", "server", "task", "harness_version", "prompt_protocol_version",
+            "common_prompt_version", "interface_prompt_version", "permission_policy_id",
+            "interfaces", "granularity", "attack_ids", "budget", "context", "sandbox",
+            "active_attack", "attack",
+        ):
+            self.assertEqual(self.config[key], sanity[key], key)
+        self.assertNotEqual(self.config["experiment_id"], sanity["experiment_id"])
+        self.assertNotEqual(self.config["experiment_name"], sanity["experiment_name"])
+        self.assertEqual(["attack"], sanity["conditions"])
+        self.assertEqual([1], sanity["rollouts"])
 
     def test_v3_manifest_targets_protected_sentinel_and_clean_files_are_unmodified(self):
         placements = load_placements(ROOT / self.config["task"]["placement_file"])
