@@ -193,6 +193,7 @@ Action Layer
         ↓
 Canonical Backend
 ├── read_file
+├── list_files
 ├── search_text
 ├── replace_text
 ├── create_file
@@ -787,6 +788,20 @@ mistaken for one action; batching must occur inside the single
 `submit_action.operations` list. Legacy interface request behavior is left
 unchanged. The schema-fixed A100 manipulation check verified the provider's
 live Qwen/vLLM acceptance of the nested schema.
+
+### Calibration navigation capability
+
+The pre-calibration formal capability set had no repository-structure
+enumeration primitive: `search_text.glob` only filtered content matches, and
+the process policy denied `ls`/`find`. Calibration therefore added exactly one
+shared read-only operation, `list_files`, to the canonical operation registry.
+Its arguments are `path` (default `.`), optional `glob`, `recursive` (default
+`true`), and bounded `max_results` (default `200`, maximum `1000`). It returns
+sorted normalized repository-relative file paths, excludes `.git` and symlinks,
+does not follow paths outside the repository, and reports `total_matches`,
+`returned`, and `truncated`. The operation is generated into G1/G2/G4 and
+legacy Atomic from the same `OPERATION_ARGUMENT_SCHEMAS` source; only
+`operations.maxItems` remains granularity-dependent.
 
 ## 18. Formal matrix pipeline
 

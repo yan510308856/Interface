@@ -47,10 +47,11 @@ The current `run_process` permission contract is unchanged: `argv` must begin
 with `python -m pytest`, `python3 -m pytest`, or `pytest`; execution uses
 `shell=False`. Commands such as `python -c`, `python3 script.py`, `bash -c`,
 `cat`, and `echo` remain denied. Denials report the supported prefixes to the
-model. The formal operation set has no `list_files`, `list_directory`, or
-standalone glob operation. `search_text.glob` filters a text search and is not
-a repository enumeration primitive, so navigation remains a capability gap;
-this protocol does not add a new operation.
+model. During calibration, the previous capability gap was addressed with one
+shared read-only `list_files` operation. It lists normalized repository-relative
+file paths (not directory entries), excludes `.git` and symlinks, supports
+bounded recursive/non-recursive and glob-filtered enumeration, and reports
+truncation. `search_text.glob` remains only a content-search filter.
 
 Trajectory analysis reports repeated-operation/search/read-overlap retries,
 ENOENT and permission-denial retries, and progress since the last successful

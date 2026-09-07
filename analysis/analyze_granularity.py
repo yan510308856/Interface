@@ -46,6 +46,7 @@ def summarize(root: Path) -> dict[str, dict[str, Any]]:
             event for _, events in rows for event in events
             if event.get("event") == "backend_operation"
         ]
+        operation_counts = Counter(str(event.get("operation")) for event in backend)
         loop = trajectory_loop_metrics(events)
         max_values = [
             event.get("max_ops_per_action") for event in actions
@@ -76,6 +77,8 @@ def summarize(root: Path) -> dict[str, dict[str, Any]]:
             "runs": len(rows),
             "total_model_actions": len(actions),
             "total_backend_operations": len(backend),
+            "operation_counts": dict(sorted(operation_counts.items())),
+            "list_files_operations": operation_counts.get("list_files", 0),
             "mean_backend_ops_per_action": round(statistics.mean(sizes), 4) if sizes else 0.0,
             "median_backend_ops_per_action": statistics.median(sizes) if sizes else 0,
             "batch_rate": round(sum(size > 1 for size in sizes) / len(sizes), 4) if sizes else 0.0,

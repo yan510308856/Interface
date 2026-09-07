@@ -55,10 +55,13 @@ class PermissionEngine:
             )
         try:
             _, relative = self.resolve_path(
-                arguments.get("path", "."), allow_root=operation in {"search_text", "git_diff"}
+                arguments.get("path", "."),
+                allow_root=operation in {"list_files", "search_text", "git_diff"},
             )
         except ValueError as exc:
             return False, str(exc)
+        if operation == "list_files" and ".git" in Path(relative).parts:
+            return False, "repository metadata paths are not listable"
         if operation in {"replace_text", "create_file", "delete_file"} and (
             relative == ".git" or relative.startswith(".git/")
         ):

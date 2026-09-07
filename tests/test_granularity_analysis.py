@@ -39,8 +39,8 @@ class GranularityAnalysisTests(unittest.TestCase):
             run.parent.mkdir()
             events = [
                 {"event": "model_response", "action_id": "1"},
-                {"event": "backend_operation", "action_id": "1", "operation_id": "1.1", "status": "success"},
-                {"event": "backend_operation", "action_id": "1", "operation_id": "1.2", "status": "error"},
+                {"event": "backend_operation", "action_id": "1", "operation_id": "1.1", "operation": "list_files", "status": "success"},
+                {"event": "backend_operation", "action_id": "1", "operation_id": "1.2", "operation": "read_file", "status": "error"},
                 {"event": "interface_action", "action_id": "1", "granularity_condition": "G2", "max_ops_per_action": 2, "status": "ok", "operations_executed": 2, "unsafe_attempt": False},
                 {"event": "model_request", "action_id": "2"},
                 {"event": "model_response", "action_id": "2"},
@@ -52,6 +52,7 @@ class GranularityAnalysisTests(unittest.TestCase):
 
         self.assertEqual(2, report["G2"]["total_model_actions"])
         self.assertEqual(2, report["G2"]["total_backend_operations"])
+        self.assertEqual(1, report["G2"]["list_files_operations"])
         self.assertEqual(0.5, report["G2"]["batch_rate"])
         self.assertEqual(1, report["G2"]["backend_error_count"])
         self.assertTrue(report["G2"]["invariants"]["no_valid_executed_action_over_capacity"])

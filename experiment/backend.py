@@ -9,7 +9,7 @@ import subprocess
 import time
 from collections import defaultdict
 from copy import deepcopy
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from experiment.logging import JsonlLogger
@@ -25,6 +25,33 @@ OPERATION_ARGUMENT_SCHEMAS: dict[str, dict[str, Any]] = {
             "end_line": {"type": "integer", "description": "Inclusive last line; defaults to the read limit."},
         },
         "required": ["path"],
+        "additionalProperties": False,
+    },
+    "list_files": {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Repository-relative file or directory; defaults to .",
+                "default": ".",
+            },
+            "glob": {
+                "type": "string",
+                "description": "Optional glob matched against normalized repository-relative file paths.",
+            },
+            "recursive": {
+                "type": "boolean",
+                "description": "Recurse into subdirectories; defaults to true.",
+                "default": True,
+            },
+            "max_results": {
+                "type": "integer",
+                "description": "Maximum number of paths to return; defaults to 200.",
+                "minimum": 1,
+                "maximum": 1000,
+                "default": 200,
+            },
+        },
         "additionalProperties": False,
     },
     "search_text": {
@@ -106,6 +133,7 @@ REQUIRED_ARGUMENTS = {
 }
 OPERATION_DESCRIPTIONS = {
     "read_file": "Read UTF-8 text from a repository file. Defaults to start_line=1 and at most 400 lines when end_line is omitted.",
+    "list_files": "List repository-relative files, excluding .git and symlinks. Defaults to path='.', recursive=True, and max_results=200; results are sorted and truncation is reported.",
     "search_text": "Search repository text. Defaults to path='.', glob=None, and case_sensitive=False; .git is excluded.",
     "replace_text": "Replace exact text in a repository file. expected_replacements defaults to 1 and must match.",
     "create_file": "Create one new repository file; existing files are not overwritten.",
@@ -141,7 +169,12 @@ def _matches_json_type(value: Any, schema: dict[str, Any]) -> bool:
     if schema_type == "string":
         return isinstance(value, str)
     if schema_type == "integer":
-        return isinstance(value, int) and not isinstance(value, bool)
+        return (
+            isinstance(value, int)
+            and not isinstance(value, bool)
+            and value >= schema.get("minimum", value)
+            and value <= schema.get("maximum", value)
+        )
     if schema_type == "boolean":
         return isinstance(value, bool)
     if schema_type == "array":
@@ -175,6 +208,8 @@ def operation_argument_error(index: int, operation: str, arguments: Any) -> str 
     return None
 
 DEFAULT_READ_LINES = 400
+DEFAULT_LIST_FILES_RESULTS = 200
+MAX_LIST_FILES_RESULTS = 1000
 
 
 class Backend:
@@ -262,6 +297,59 @@ class Backend:
             "end_line": returned_end,
             "total_lines": total_lines,
             "truncated": truncated,
+        }
+
+    def _list_files(
+        self,
+        path: str = ".",
+        glob: str | None = None,
+        recursive: bool = True,
+        max_results: int = DEFAULT_LIST_FILES_RESULTS,
+    ) -> dict[str, Any]:
+        if not isinstance(max_results, int) or isinstance(max_results, bool):
+            raise ValueError("max_results must be an integer")
+        if not 1 <= max_results <= MAX_LIST_FILES_RESULTS:
+            raise ValueError(f"max_results must be between 1 and {MAX_LIST_FILES_RESULTS}")
+        root, relative_root = self._file(path, allow_root=True)
+        if root.is_symlink():
+            raise ValueError("symlink paths are not listable")
+        if not root.exists():
+            raise FileNotFoundError(path)
+        if root.is_file():
+            candidates = [root]
+        elif root.is_dir():
+            candidates: list[Path] = []
+            pending = [root]
+            while pending:
+                directory = pending.pop()
+                for candidate in directory.iterdir():
+                    if candidate.is_symlink():
+                        continue
+                    if candidate.is_file():
+                        candidates.append(candidate)
+                    elif recursive and candidate.is_dir():
+                        pending.append(candidate)
+        else:
+            raise ValueError("path must be a file or directory")
+
+        paths = []
+        for candidate in candidates:
+            relative = candidate.relative_to(self.repo_root).as_posix()
+            if ".git" in Path(relative).parts:
+                continue
+            if glob is not None and not PurePosixPath(relative).match(glob):
+                continue
+            paths.append(relative)
+        paths.sort()
+        return {
+            "path": relative_root,
+            "glob": glob,
+            "recursive": recursive,
+            "max_results": max_results,
+            "paths": paths[:max_results],
+            "returned": min(len(paths), max_results),
+            "total_matches": len(paths),
+            "truncated": len(paths) > max_results,
         }
 
     def _search_text(self, query: str, path: str = ".", glob: str | None = None, case_sensitive: bool = False) -> dict[str, Any]:

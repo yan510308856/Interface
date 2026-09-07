@@ -62,6 +62,7 @@ def _run_row(root: Path, spec: dict[str, Any], oracle: dict[str, dict[str, Any]]
     events = _events(run_dir / "trajectory.jsonl")
     actions = [event for event in events if event.get("event") in {"interface_action", "action"}]
     backend = [event for event in events if event.get("event") == "backend_operation"]
+    operation_counts = Counter(str(event.get("operation")) for event in backend)
     loop = trajectory_loop_metrics(events)
     visible_actions = [event for event in actions if event.get("status") != "finish"]
     sizes = [int(event.get("operations_executed", event.get("backend_operations_executed", 0))) for event in actions]
@@ -92,6 +93,8 @@ def _run_row(root: Path, spec: dict[str, Any], oracle: dict[str, dict[str, Any]]
         "termination_reason": result.get("termination_reason") or failure.get("termination_reason"),
         "actions": action_count,
         "backend_ops": backend_count,
+        "operation_counts": json.dumps(dict(sorted(operation_counts.items())), sort_keys=True),
+        "list_files_operations": operation_counts.get("list_files", 0),
         "ops_per_observation": round(backend_count / model_visible, 6) if model_visible else 0.0,
         "model_visible_observations": model_visible,
         "action_size_distribution": json.dumps(dict(sorted(Counter(sizes).items())), sort_keys=True),
@@ -139,6 +142,7 @@ def analyze(root: Path, oracle_path: Path | None = None) -> tuple[list[dict[str,
             "incomplete": sum(row["status"] != "completed" for row in group),
             "actions": sum(row["actions"] for row in group),
             "backend_ops": sum(row["backend_ops"] for row in group),
+            "list_files_operations": sum(row["list_files_operations"] for row in group),
             "mean_ops_per_observation": round(statistics.mean([row["ops_per_observation"] for row in group]), 6) if group else 0.0,
             "batch_rate": round(statistics.mean([row["batch_rate"] for row in group]), 6) if group else 0.0,
             "full_capacity_rate": round(statistics.mean([row["full_capacity_rate"] for row in group]), 6) if group else 0.0,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,62 @@ from tests.helpers import git_repo, make_backend
 
 
 class BackendTests(unittest.TestCase):
+    def test_list_files_is_bounded_sorted_and_respects_recursive_and_glob(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo = git_repo(root / "repo")
+            (repo / "top.txt").write_text("top\n", encoding="utf-8")
+            (repo / "nested").mkdir()
+            (repo / "nested" / "inner.py").write_text("inner\n", encoding="utf-8")
+            (repo / "nested" / "inner.txt").write_text("inner\n", encoding="utf-8")
+            (repo / "nested" / "deeper").mkdir()
+            (repo / "nested" / "deeper" / "deep.py").write_text("deep\n", encoding="utf-8")
+            outside = root / "outside"
+            outside.mkdir()
+            (outside / "secret.py").write_text("secret\n", encoding="utf-8")
+            os.symlink(outside, repo / "external-link")
+            backend = make_backend(repo, root / "trajectory.jsonl")
+
+            recursive = backend.execute("list_files", {}, "recursive")
+            nonrecursive = backend.execute(
+                "list_files", {"path": "nested", "recursive": False}, "nonrecursive"
+            )
+            filtered = backend.execute(
+                "list_files", {"glob": "nested/*.py"}, "filtered"
+            )
+            limited = backend.execute(
+                "list_files", {"max_results": 2}, "limited"
+            )
+            repeated = backend.execute("list_files", {}, "repeated")
+
+        self.assertTrue(recursive["ok"])
+        self.assertEqual(
+            ["nested/deeper/deep.py", "nested/inner.py", "nested/inner.txt", "sample.py", "top.txt"],
+            recursive["result"]["paths"],
+        )
+        self.assertEqual(["nested/inner.py", "nested/inner.txt"], nonrecursive["result"]["paths"])
+        self.assertEqual(["nested/inner.py"], filtered["result"]["paths"])
+        self.assertEqual(["nested/deeper/deep.py", "nested/inner.py"], limited["result"]["paths"])
+        self.assertEqual(5, limited["result"]["total_matches"])
+        self.assertTrue(limited["result"]["truncated"])
+        self.assertEqual(recursive["result"], repeated["result"])
+        self.assertNotIn("external-link/secret.py", recursive["result"]["paths"])
+        self.assertNotIn(".git", " ".join(recursive["result"]["paths"]))
+
+    def test_list_files_denies_out_of_root_and_git_paths(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo = git_repo(root / "repo")
+            backend = make_backend(repo, root / "trajectory.jsonl")
+
+            outside = backend.execute("list_files", {"path": "../repo"}, "outside")
+            metadata = backend.execute("list_files", {"path": ".git"}, "metadata")
+
+        self.assertEqual("denied", outside["status"])
+        self.assertIn("inside the repository", outside["error"])
+        self.assertEqual("denied", metadata["status"])
+        self.assertIn("metadata paths are not listable", metadata["error"])
+
     def test_read_file_default_bound_and_explicit_ranges(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

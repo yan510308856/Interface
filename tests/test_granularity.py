@@ -80,6 +80,20 @@ class GranularityAdapterTests(unittest.TestCase):
         self.assertEqual([1, 2], [event["operation_index"] for event in backend_events])
         self.assertEqual(["parent-1", "parent-1"], [event["parent_tool_call_id"] for event in backend_events])
 
+    def test_batch_can_include_list_files(self):
+        result = GranularityActionAdapter(2).execute_action(
+            action_call([
+                operation("list_files", {"path": ".", "recursive": False}),
+                operation("read_file", {"path": "sample.py"}),
+            ]),
+            self.backend,
+            "list-batch",
+        )
+        payload = json.loads(result.observation)
+        self.assertEqual("ok", result.status)
+        self.assertEqual(["list_files", "read_file"], [item["name"] for item in payload["operations"]])
+        self.assertEqual(2, self.backend.operation_count)
+
     def test_error_does_not_stop_precommitted_batch(self):
         result = GranularityActionAdapter(2).execute_action(
             action_call([
@@ -162,6 +176,7 @@ class OperationSchemaTests(unittest.TestCase):
     def test_canonical_arguments_are_accepted_for_every_operation(self):
         arguments = {
             "read_file": {"path": "sample.py"},
+            "list_files": {},
             "search_text": {"query": "VALUE"},
             "replace_text": {"path": "sample.py", "old_text": "1", "new_text": "2"},
             "create_file": {"path": "new.txt", "content": "x"},
