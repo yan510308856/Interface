@@ -51,6 +51,7 @@ class Model:
         seed: int,
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | None = None,
+        parallel_tool_calls: bool | None = None,
     ) -> Generation:
         body = {
             "model": self.config["name"], "messages": messages,
@@ -60,6 +61,8 @@ class Model:
         if tools is not None:
             body["tools"] = tools
             body["tool_choice"] = tool_choice
+            if parallel_tool_calls is not None:
+                body["parallel_tool_calls"] = parallel_tool_calls
         url = self.config.get("base_url", "http://127.0.0.1:8000/v1") + "/chat/completions"
         started = time.monotonic()
         payload = self._post_json(url, body)

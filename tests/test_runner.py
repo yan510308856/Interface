@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -225,6 +226,33 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("python script.py", common)
         self.assertIn("python -c ...", common)
 
+        granularity = runner._system_prompt("G2", 2)
+        self.assertIn('{"operations": [], "finish": "done"}', granularity)
+        self.assertIn("action-budget stop is not a model finish", granularity)
+        prompts = [runner._system_prompt(name, capacity) for name, capacity in (
+            ("G1", 1), ("G2", 2), ("G4", 4),
+        )]
+        normalized = [
+            re.sub(r"capacity of [124]", "capacity of N", prompt.replace(
+                "up to 1 backend", "up to N backend"
+            ).replace("up to 2 backend", "up to N backend").replace(
+                "up to 4 backend", "up to N backend"
+            ))
+            for prompt in prompts
+        ]
+        self.assertEqual(normalized[0], normalized[1])
+        self.assertEqual(normalized[1], normalized[2])
+        self.assertEqual(
+            [runner._system_prompt(name, capacity).count(f"capacity of {capacity}")
+             for name, capacity in (("G1", 1), ("G2", 2), ("G4", 4))],
+            [1, 1, 1],
+        )
+        for phrase in ("batch aggressively", "always use full capacity", "prefer G operations", "maximize batching"):
+            self.assertNotIn(phrase.lower(), runner.GRANULARITY_PROMPT.lower())
+        self.assertIn("Do not add unnecessary operations merely to fill the available capacity", granularity)
+        self.assertIn("submit them together", granularity)
+        self.assertIn("If a later operation depends on an earlier operation's result", granularity)
+
         atomic = runner.INTERFACE_PROMPTS["atomic"]
         self.assertIn("Every assistant response must contain exactly one native tool call", atomic)
         self.assertIn("Call only one tool per response", atomic)
@@ -399,6 +427,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(5, result["actions"])
         self.assertEqual(0, result["backend_operations"])
         self.assertEqual("", result["final_patch"])
+        self.assertEqual("action_budget_exhausted", result["termination_reason"])
         invalid_events = [event for event in events if event["event"] == "interface_action"]
         self.assertEqual(5, len(invalid_events))
         self.assertTrue(all(event["invalid_reason"] for event in invalid_events))
@@ -454,6 +483,40 @@ class RunnerTests(unittest.TestCase):
             self.assertTrue(result["evaluation_skipped"])
             self.assertIn("final_patch", result)
             self.assertTrue((root / "run/prediction.jsonl").exists())
+
+    def test_termination_reason_precedence_is_explicit(self):
+        self.assertTrue({
+            "model_finish", "action_budget_exhausted", "operation_budget_exhausted",
+            "timeout", "model_api_error", "runner_error",
+        }.issubset(set(runner.TERMINATION_REASONS)))
+        self.assertEqual(
+            "model_finish",
+            runner._termination_reason(
+                model_finished=True, timed_out=False, operation_budget_exhausted=True,
+                actions=3, max_model_actions=3,
+            ),
+        )
+        self.assertEqual(
+            "timeout",
+            runner._termination_reason(
+                model_finished=False, timed_out=True, operation_budget_exhausted=False,
+                actions=1, max_model_actions=3,
+            ),
+        )
+        self.assertEqual(
+            "operation_budget_exhausted",
+            runner._termination_reason(
+                model_finished=False, timed_out=False, operation_budget_exhausted=True,
+                actions=1, max_model_actions=3,
+            ),
+        )
+        self.assertEqual(
+            "action_budget_exhausted",
+            runner._termination_reason(
+                model_finished=False, timed_out=False, operation_budget_exhausted=False,
+                actions=3, max_model_actions=3,
+            ),
+        )
 
 
 if __name__ == "__main__":

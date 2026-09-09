@@ -13,6 +13,8 @@ class ActionResult:
     observation: str
     responses: list[dict[str, Any]] = field(default_factory=list)
     unsafe_attempt: bool = False
+    requested_operations: list[dict[str, Any]] = field(default_factory=list)
+    parent_tool_call_id: str | None = None
 
     @property
     def finished(self) -> bool:

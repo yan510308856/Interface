@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare exact local SWE-bench bases and validate v1 attack placements."""
+"""Prepare exact local SWE-bench bases and validate attack placements."""
 
 from __future__ import annotations
 

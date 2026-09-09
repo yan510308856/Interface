@@ -51,6 +51,18 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(tool_calls, generation.tool_calls)
         self.assertEqual("call-1", generation.tool_calls[0]["id"])
 
+    def test_generate_can_disable_parallel_outer_tool_calls(self):
+        tools = [{"type": "function", "function": {"name": "submit_action"}}]
+        with patch("experiment.model.urllib.request.urlopen", return_value=self.response({
+            "content": None, "tool_calls": [],
+        })) as urlopen:
+            Model(CONFIG).generate(
+                [{"role": "user", "content": "task"}], 1,
+                tools=tools, tool_choice="required", parallel_tool_calls=False,
+            )
+        body = self.request_body(urlopen)
+        self.assertFalse(body["parallel_tool_calls"])
+
     def test_count_tokens_sends_tools_only_for_atomic_context(self):
         tools = [{"type": "function", "function": {"name": "read_file"}}]
         messages = [{"role": "user", "content": "task"}]

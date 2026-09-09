@@ -1,6 +1,44 @@
 # Interface
 
-This repository contains a minimal experiment comparing two action interfaces for a coding agent while holding the model, SWE-bench task, Backend, permission policy, sandbox, and budgets fixed.
+## Current study: execution/action granularity
+
+The current formal harness is `configs/experiment_action_boundary_granularity.yaml`.
+It compares G1/Atomic-1, G2/Batch-2, and G4/Batch-4 through one unified
+`submit_action` JSON schema and one canonical Backend. `max_ops_per_action` is
+the primary treatment; model-action and backend-operation budgets are separate
+configuration fields. The clean-only matrix is in
+`configs/experiment_action_boundary_granularity_clean.yaml`.
+The current research/design record is
+[`docs/research_action_boundary.md`](docs/research_action_boundary.md).
+
+The formal rollout pipeline is `scripts/run_full_matrix.py` with
+`configs/experiment_action_boundary_formal.yaml`: 3 tasks × G1/G2/G4 × clean
+and `repository_comment_hijack_v1` × rollouts 1/2/3 = 54 runs. It uses one
+externally managed vLLM endpoint and up to three concurrent agent workers;
+the code never starts vLLM. Use `--dry-run` for the deterministic, no-network
+pipeline check. Formal outputs belong under one experiment root and can be
+resumed, analyzed with `analysis/analyze_formal_matrix.py`, and later frozen
+with `scripts/freeze_experiment.py`. Official SWE-bench scoring is exposed only
+through the tooling in `oracle/` and is not run by the pipeline.
+Optional observed vLLM metadata can be recorded with
+`--server-metadata observed-server.json`; the runner never probes the endpoint.
+
+Run CPU validation and inspect the plan with:
+
+```bash
+python -m unittest discover -s tests -v
+python scripts/prepare_sources.py --config configs/experiment_action_boundary_granularity_clean.yaml
+python scripts/run_experiment.py --config configs/experiment_action_boundary_granularity_clean.yaml --plan
+python analysis/analyze_granularity.py runs
+```
+
+The old Atomic/Restricted Python configs and implementation remain legacy
+reproduction paths. They are not the primary treatment of the new study.
+
+Historically this repository compared two action interfaces for a coding agent.
+The current formal experiment holds the model, SWE-bench task, Backend,
+permission policy, sandbox, and budgets fixed while varying execution/action
+granularity.
 
 ```text
 Atomic ------------------\
@@ -8,7 +46,7 @@ Atomic ------------------\
 Restricted Python -------/
 ```
 
-## Harness v6: Python Batch Orchestration
+## Historical Harness v6: Python Batch Orchestration
 
 The current implementation experiment is
 `harness-v6-python-batch-three-small-tasks`, configured by
@@ -146,15 +184,26 @@ After interruption, clone/fetch the same branch, run `prepare_sources.py` again,
 
 ## Official SWE-bench scoring
 
-This project does not reimplement the SWE-bench scorer. After rollouts, install the official harness from `requirements.txt`, keep the generated `prediction.jsonl`/patch artifacts under the ignored run directories, and invoke the official harness for the selected instance IDs. A typical evaluation command is:
+This project does not reimplement the SWE-bench scorer. For the current formal
+artifact, use the shared adapter around the validated historical oracle. It
+keeps one prediction file per rollout, skips empty patches, invokes the official
+`swebench eval` path one instance at a time, and reads `resolved` only from the
+official instance `report.json`:
 
 ```bash
-python -m swebench.harness.run_evaluation \
-  --dataset_name princeton-nlp/SWE-bench_Verified \
-  --predictions_path runs/harness-v5-1-structured-python-validation-feedback-three-small-tasks/<run-dir>/prediction.jsonl \
-  --instance_ids pallets__flask-5014 \
-  --max_workers 1 \
-  --run_id harness-v5-1-structured-python-validation-feedback-three-small-tasks
+python oracle/prepare_predictions.py --experiment <formal-root>
+python oracle/run_official_swebench.py \
+  --experiment <formal-root> \
+  --task-metadata <verified-task-json> \
+  --output <oracle-output-root>
+python oracle/summarize_oracle.py \
+  --experiment <formal-root> \
+  --oracle <oracle-output-root>
 ```
 
-Old Harness v2, v3, v3.1, v3.2, v4, or v5 results must not be mixed with v5.1 results: validation-feedback semantics, experiment ID, and output directory are versioned separately. The official dataset guide and dataset card define the benchmark fields and split used here: [SWE-bench dataset guide](https://github.com/SWE-bench/SWE-bench/blob/main/docs/guides/datasets.md) and [SWE-bench Verified](https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified).
+The adapter also reads historical `input/runs/` artifacts without mapping
+Atomic or Restricted Python to G1/G2/G4. Docker/setup/harness failures remain
+infrastructure outcomes rather than unresolved patches. The official dataset
+guide and dataset card define the benchmark fields and split used here:
+[SWE-bench dataset guide](https://github.com/SWE-bench/SWE-bench/blob/main/docs/guides/datasets.md)
+and [SWE-bench Verified](https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified).

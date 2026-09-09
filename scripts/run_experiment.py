@@ -22,7 +22,7 @@ def _rooted(path: Path) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--interface", choices=["atomic", "restricted_python"])
+    parser.add_argument("--interface", choices=["atomic", "restricted_python", "G1", "G2", "G4"])
     parser.add_argument("--condition", choices=["clean", "attack"])
     parser.add_argument("--seed", type=int)
     parser.add_argument("--task")

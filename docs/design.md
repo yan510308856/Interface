@@ -1,6 +1,69 @@
 # Experiment design
 
-## Versioned v6 Python Batch Orchestration protocol
+## Current protocol: execution/action granularity
+
+The primary experiment is now `action-boundary-granularity-v1`, not an Atomic
+versus Restricted Python comparison. G1, G2, and G4 use the same
+`submit_action` JSON representation, the same parser and validator, the same
+permission policy, and the same canonical `Backend.execute()` implementation.
+The only intended treatment difference is the configured maximum number of
+backend operations per model action: 1, 2, or 4.
+
+An action is validated as a whole before execution. Static operations execute
+in listed order, and all operations in a valid batch continue after an
+individual backend error or permission denial. The model receives one
+aggregated observation after the batch; backend operations do not trigger model
+re-entry. G1/G2/G4 configurations independently record model-action and
+backend-operation budgets. The deterministic MC1--MC4 manipulation check is
+implemented in `experiment/microbenchmark.py` and
+`scripts/run_manipulation_check.py`.
+
+Operation schemas are canonicalized in `experiment/backend.py` and exposed to
+the model through discriminated `oneOf` variants inside `submit_action`; this
+preserves exact operation names, required fields, types, and closed argument
+objects. All formal conditions set `parallel_tool_calls=false`, so an action
+contains one outer tool call and batching occurs only inside its operation list.
+
+The formal matrix pipeline is separate from the treatment implementation. It
+expands `G1/G2/G4 × clean/attack × rollout 1/2/3` over the current three-task
+set (54 deterministic run IDs), schedules task/rollout blocks with the three G
+conditions interleaved, and supports at most three concurrent workers against
+one externally managed vLLM endpoint. `scripts/run_full_matrix.py --dry-run`
+uses a deterministic no-network model for local scheduler/resume validation.
+Formal output roots preserve plans, manifests, run metadata, trajectories,
+patches, server configuration, attack placements, and Git provenance. Official
+SWE-bench grading remains a later explicit step through the official harness.
+
+### Protocol and capability audit
+
+The only model-level terminal signal for `submit_action` is the structured
+terminal action `{"operations": [], "finish": "done"}`. The schema exposes
+`finish` as an enum containing only `done`, and plain text or exhausting a
+budget is not treated as a model finish. Each run records one of
+`model_finish`, `action_budget_exhausted`, `operation_budget_exhausted`,
+`timeout`, `model_api_error`, or `runner_error` as `termination_reason`.
+
+The current `run_process` permission contract is unchanged: `argv` must begin
+with `python -m pytest`, `python3 -m pytest`, or `pytest`; execution uses
+`shell=False`. Commands such as `python -c`, `python3 script.py`, `bash -c`,
+`cat`, and `echo` remain denied. Denials report the supported prefixes to the
+model. During calibration, the previous capability gap was addressed with one
+shared read-only `list_files` operation. It lists normalized repository-relative
+file paths (not directory entries), excludes `.git` and symlinks, supports
+bounded recursive/non-recursive and glob-filtered enumeration, and reports
+truncation. `search_text.glob` remains only a content-search filter.
+
+Trajectory analysis reports repeated-operation/search/read-overlap retries,
+ENOENT and permission-denial retries, and progress since the last successful
+edit or test. These are analysis-only metrics and never stop or alter a run.
+
+Restricted Python remains available only for historical reproducibility. The
+older sections below describe those legacy protocols and must not be mixed
+with the new G1/G2/G4 trajectories.
+
+## Historical protocols
+
+### Versioned v6 Python Batch Orchestration protocol
 
 The new experiment is `harness-v6-python-batch-three-small-tasks`, configured by
 `configs/experiment_v6_python_batch_three_small_tasks.yaml`. It is a separate
