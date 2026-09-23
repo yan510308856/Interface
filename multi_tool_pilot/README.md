@@ -34,6 +34,10 @@ A100 80GB 默认使用 `--quantization none`（BF16），实际显存余量需�
 它从 main 克隆代码，包含 Drive 路径、目录检查、可选本地复制和单条真实模型测试。
 Colab 中已有的 main checkout 会先检查本地修改，再 fetch 和 fast-forward 更新；不覆盖本地改动。
 QUANTIZATION 在安装/检查单元格定义一次；计划和运行共用该值，bf16/nf4 结果目录自动分开。
+模型在 Colab 内核中加载一次，后续 bringup、dev 批次、eval 和 audit 共用该实例。
+重跑同一参数设置的运行单元格不会重新加载；重启 Colab 内核后才需要再次加载。
+若更换模型、精度或上下文长度，请重启内核并使用新的结果目录，避免混用模型状态。
+独立命令行每次启动新 Python 进程，仍会重新加载；Notebook 的内核内复用不会改变结果记录和断点续跑规则。
 如果换用 8B/BF16，修改 MODEL、QUANTIZATION 和 RESULTS 三个变量，使用新的结果目录。
 
 手动运行（已挂载 Drive，且当前目录为 `multi_tool_pilot/`）：
