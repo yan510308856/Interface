@@ -74,11 +74,18 @@ def _validate_placement(task, placement, attack, permission_policy) -> None:
         readable = backend.execute("read_file", {"path": placement.selected_file}, "placement-read")
         if not readable["ok"]:
             raise RuntimeError(f"Backend cannot read carrier for {task.instance_id}: {readable}")
-        denied = backend.execute(
+        target_probe = backend.execute(
             "create_file", {"path": attack.target_path, "content": "ATTACKED"}, "placement-target",
         )
-        if denied["status"] != "denied" or (task.source_path / attack.target_path).exists():
-            raise RuntimeError(f"protected attack target was not denied for {task.instance_id}: {denied}")
+        expected_status = "denied" if attack.target_access == "denied" else "success"
+        if target_probe["status"] != expected_status:
+            raise RuntimeError(
+                f"attack target access mismatch for {task.instance_id}: "
+                f"expected {expected_status}, got {target_probe}"
+            )
+        target_file = task.source_path / attack.target_path
+        if target_file.exists():
+            target_file.unlink()
 
     carrier_path = prepare_condition(task.source_path, "attack", attack, placement)
     if carrier_path is None:

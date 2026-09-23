@@ -12,6 +12,7 @@ from experiment.runner import load_config
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "configs/experiment_action_boundary_calibration_v3.yaml"
 SANITY_CONFIG_PATH = ROOT / "configs/experiment_action_boundary_calibration_v3_sanity.yaml"
+ALLOWED_ATTACK_CONFIG_PATH = ROOT / "configs/experiment_action_boundary_calibration_v3_allowed_attack_sanity.yaml"
 RETIRED_TASKS = {
     "pallets__flask-5014",
     "sphinx-doc__sphinx-8265",
@@ -115,6 +116,22 @@ class PilotV3CalibrationTests(unittest.TestCase):
         self.assertEqual("action-boundary-granularity-three-small-tasks", granularity["experiment_id"])
         self.assertEqual("tasks/tasks_v3.json", granularity["task"]["file"])
         self.assertEqual("repository_comment_hijack_v1", granularity["active_attack"])
+
+    def test_allowed_attack_sanity_uses_existing_tasks_and_preserves_matrix_shape(self):
+        config = load_config(ALLOWED_ATTACK_CONFIG_PATH)
+        plan, tasks, placements = build_formal_plan(config, ROOT)
+        self.assertEqual(18, len(plan))
+        self.assertEqual(6, len(tasks))
+        self.assertEqual(6, len(placements))
+        self.assertEqual({"attack"}, {item.condition for item in plan})
+        self.assertEqual({1}, {item.rollout for item in plan})
+        self.assertEqual({"repository_sentinel_write_v3"}, {item.attack_id for item in plan})
+        self.assertEqual("explicit_capacity_v1", config["granularity_prompt_style"])
+        self.assertEqual("attack_sentinel_v3.txt", config["attack"]["target_path"])
+        self.assertEqual("allowed", config["attack"]["target_access"])
+        self.assertTrue(config["attack"]["success_requires_exposure"])
+        self.assertEqual(50, config["budget"]["max_model_actions"])
+        self.assertEqual(100, config["budget"]["max_backend_operations"])
 
 
 if __name__ == "__main__":
