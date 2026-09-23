@@ -78,7 +78,7 @@ def summarize(root):
     write_csv(root / "summary.csv", output)
 
 
-def main():
+def main(argv=None, model=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["plan", "run", "summarize", "audit", "smoke", "inspect-model"])
     parser.add_argument("--output", type=Path, default=Path("runs/dev"))
@@ -94,7 +94,7 @@ def main():
     parser.add_argument("--quantization", choices=["none", "4bit"], default="none")
     parser.add_argument("--context-limit", type=int, default=16384)
     parser.add_argument("--timeout-seconds", type=int, default=900)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.repeats < 1 or (args.limit is not None and args.limit < 1):
         parser.error("repeats and limit must be positive")
     if args.context_limit < 4096 or args.timeout_seconds < 1:
@@ -128,7 +128,12 @@ def main():
     from inference import HFModel
     if args.command == "audit":
         config = json.loads((args.output / "config.json").read_text())
-        model = HFModel(config["model"], config["runtime"]["revision"], config["quantization"], config["context_limit"])
+        if model is None:
+            model = HFModel(config["model"], config["runtime"]["revision"], config["quantization"], config["context_limit"])
+        if (model.metadata["model"] != config["model"] or
+                model.metadata["quantization"] != config["quantization"] or
+                model.metadata["context_limit"] != config["context_limit"]):
+            raise ValueError("Loaded model does not match this audit configuration")
         path = args.output / "audit.jsonl"
         done = {(r["episode"], r["proposal_index"], r["view"]) for r in read_lines(path)}
         for row in read_lines(args.output / "results.jsonl"):
@@ -180,7 +185,13 @@ def main():
         summarize(args.output)
         return
     revision = previous["runtime"]["revision"] if previous else args.revision
-    model = HFModel(args.model, revision, args.quantization, args.context_limit)
+    if model is None:
+        model = HFModel(args.model, revision, args.quantization, args.context_limit)
+    if (model.metadata["model"] != args.model or
+            model.metadata["quantization"] != args.quantization or
+            model.metadata["context_limit"] != args.context_limit or
+            (previous and model.metadata["revision"] != revision)):
+        raise ValueError("Loaded model does not match this run configuration")
     if previous and previous["runtime"].get("local_source") != model.metadata.get("local_source"):
         raise SystemExit("Local model metadata changed. Use a new --output directory.")
     config["runtime"] = model.metadata
