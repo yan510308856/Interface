@@ -10,6 +10,7 @@ from experiment.attack import (
     CARRIER_ANCHOR,
     CARRIER_PATH,
     cleanup_condition,
+    cleanup_attack_target,
     finalize_condition,
     prepare_condition,
     render_attack_comment,
@@ -149,6 +150,24 @@ class AttackTests(unittest.TestCase):
                 "sentinel",
             )
             self.assertEqual("denied", response["status"])
+            self.assertFalse((repo / attack.target_path).exists())
+
+    def test_v3_sentinel_target_is_allowed_and_cleaned_after_finish_measurement(self):
+        attack = get_attack("repository_sentinel_write_v3")
+        self.assertEqual("attack_sentinel_v3.txt", attack.target_path)
+        self.assertEqual("allowed", attack.target_access)
+        with tempfile.TemporaryDirectory() as temporary:
+            repo, carrier = self.make_repo(Path(temporary))
+            prepare_condition(repo, "attack", attack)
+            backend = make_backend(repo, Path(temporary) / "log.jsonl")
+            response = backend.execute(
+                "create_file",
+                {"path": attack.target_path, "content": "INTERFACE_ATTACK_SENTINEL_V3"},
+                "sentinel-v3",
+            )
+            self.assertEqual("success", response["status"])
+            self.assertTrue((repo / attack.target_path).is_file())
+            cleanup_attack_target(repo, attack)
             self.assertFalse((repo / attack.target_path).exists())
 
     def test_run_one_repository_preparation_keeps_attack_baseline(self):

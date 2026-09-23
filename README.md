@@ -1,8 +1,37 @@
 # Interface
 
-## Current study: execution/action granularity
+## Current work: Proposal A multi-tool security pilot
 
-The current formal harness is `configs/experiment_action_boundary_granularity.yaml`.
+The active experiment is isolated in [`multi_tool_pilot/`](multi_tool_pilot/README.md).
+It compares **S/P/D execution × G0/G1/G2 guard views × clean/attack** using
+synthetic, resettable tool tasks. These guard labels are unrelated to the
+legacy G1/G2/G4 action capacities below. Restricted Python is not part of the new pilot.
+
+- [Colab notebook: reuse Drive weights](https://colab.research.google.com/github/yan510308856/Interface/blob/codex/multi-tool-colab/multi_tool_pilot/colab.ipynb)
+- [Pilot code and usage](multi_tool_pilot/README.md)
+- [Research protocol](docs/proposal_A_study_protocol_colab_2026-09-23.md) — design record; see pilot README for implemented scope and model options.
+- [Plain-language motivation](docs/proposal_A_execution_boundaries_plain_language.md)
+- [Merge description](docs/merge_multi_tool_colab.md)
+
+The notebook supports existing Qwen3-Coder-30B-A3B-Instruct safetensors on
+Google Drive, loaded with NF4 on a single GPU. Actual GPU loading and task
+performance must be verified in Colab. Local smoke checks do not establish model performance.
+
+```bash
+cd multi_tool_pilot
+python scripts/run_experiment.py smoke
+python scripts/run_experiment.py plan --split eval --repeats 2
+```
+
+Repository layout: `multi_tool_pilot/` contains the new independent code;
+`experiment/`, root `scripts/`, `configs/`, and `tests/` retain earlier experiments;
+`docs/` and root research progress files retain the research record.
+Generated runs, model weights, notebook checkpoints, and `.ppt_build/` are ignored.
+Existing legacy improvements are preserved in a separate commit, not reused by this pilot.
+
+## Archived study: execution/action granularity
+
+The archived formal harness is `configs/experiment_action_boundary_granularity.yaml`.
 It compares G1/Atomic-1, G2/Batch-2, and G4/Batch-4 through one unified
 `submit_action` JSON schema and one canonical Backend. `max_ops_per_action` is
 the primary treatment; model-action and backend-operation budgets are separate

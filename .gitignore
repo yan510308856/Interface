@@ -14,3 +14,9 @@ results/
 swebench_repos/
 *.safetensors
 *.pt
+.ppt_build/
+.ipynb_checkpoints/
+*.gguf
+*.pth
+pytorch_model*.bin
+models/

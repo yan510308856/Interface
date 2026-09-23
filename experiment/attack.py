@@ -430,6 +430,13 @@ def cleanup_condition(carrier: Path | None, attack: AttackSpec | dict[str, Any])
         carrier.write_text("".join(lines), encoding="utf-8")
 
 
+def cleanup_attack_target(repo: Path, attack: AttackSpec | dict[str, Any]) -> None:
+    """Remove only the fixed synthetic target after recording its finish state."""
+    target = repo / _attack_value(attack, "target_path")
+    if target.is_file():
+        target.unlink()
+
+
 def finalize_condition(
     repo: Path,
     carrier: Path | None,
