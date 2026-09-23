@@ -6,7 +6,7 @@
 研究问题：**执行方式改变后，同一个逐调用安全审查器的效果是否变化？变化是否与它能看到的中间结果有关？**
 
 **当前实现 v2。** 已修正并行读取机会、依赖目标提前泄露和必要读取判分，增加 Drive 本地权重与 NF4 加载。
-Colab notebook 默认复用已有 **Qwen3-Coder-30B-A3B-Instruct / NF4**；CLI 默认仍是 **Qwen3-8B / BF16**。
+Colab notebook 面向 A100 80GB，默认复用已有 **Qwen3-Coder-30B-A3B-Instruct / BF16**；CLI 默认仍是 **Qwen3-8B / BF16**。
 两者是不同模型/精度条件，结果必须分目录，不能混合比较。
 
 ## 0. 直接复用已有 Drive 权重
@@ -24,13 +24,16 @@ HF safetensors 格式，16 个权重分片，约 61 GB（十进制），不是 8
 这条路径适用于当前已核实的 Drive 文件组织；以后移动文件夹需要对应修改。
 本地目录加载使用 `local_files_only=True`，不重新从 Hub 下载权重。
 首次 4-bit 加载仍需读取全部原始分片；不会把 Drive 原文件改成量化文件。
-在 A100 40GB 上用原始 BF16 放不下权重，使用显式 `--quantization 4bit`。
+A100 80GB 默认使用 `--quantization none`（BF16），实际显存余量需首条测试确认。
+在 A100 40GB 上用原始 BF16 放不下权重，使用显式 `--quantization 4bit`，并选择单独的 nf4 结果目录。
 4-bit 采用 NF4、double quant、BF16 compute；是否满足实际显存和速度要求需 GPU bringup 验证。
 参考：[模型说明](https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct)、
 [Transformers 4.57.3 量化接口](https://huggingface.co/docs/transformers/v4.57.3/quantization/bitsandbytes)。
 
-推荐直接打开 [Colab notebook](https://colab.research.google.com/github/yan510308856/Interface/blob/codex/multi-tool-colab/multi_tool_pilot/colab.ipynb)。
-它包含确切仓库分支、Drive 路径、目录检查、可选本地复制和单条真实模型测试。
+推荐直接打开 [Colab notebook](https://colab.research.google.com/github/yan510308856/Interface/blob/main/multi_tool_pilot/colab.ipynb)。
+它从 main 克隆代码，包含 Drive 路径、目录检查、可选本地复制和单条真实模型测试。
+Colab 中已有的 main checkout 会先检查本地修改，再 fetch 和 fast-forward 更新；不覆盖本地改动。
+QUANTIZATION 在安装/检查单元格定义一次；计划和运行共用该值，bf16/nf4 结果目录自动分开。
 如果换用 8B/BF16，修改 MODEL、QUANTIZATION 和 RESULTS 三个变量，使用新的结果目录。
 
 手动运行（已挂载 Drive，且当前目录为 `multi_tool_pilot/`）：
@@ -40,7 +43,7 @@ pip install -r requirements-colab.txt
 python scripts/run_experiment.py smoke
 MODEL='/content/drive/MyDrive/Interface-R1/modelscope-cache/models/Qwen--Qwen3-Coder-30B-A3B-Instruct/snapshots/5ea29678865934640d71cfece1aedfa1e84599a4'
 python scripts/run_experiment.py inspect-model --model "$MODEL"
-python scripts/run_experiment.py run --model "$MODEL" --quantization 4bit --split dev --modes S --guards G0 --conditions clean --limit 1 --output /content/drive/MyDrive/multi_tool_pilot_v2_qwen30b_nf4/bringup
+python scripts/run_experiment.py run --model "$MODEL" --quantization none --split dev --modes S --guards G0 --conditions clean --limit 1 --output /content/drive/MyDrive/multi_tool_pilot_v2_qwen30b_bf16/bringup
 ```
 
 `inspect-model` 不加载权重，只检查配置、tokenizer、索引要求的分片是否存在且非空。
@@ -198,7 +201,7 @@ Colab 的 `/content` 在运行时销毁后会丢失。长跑前把 `--output` �
 
 ## 6. 预算与速度
 
-CLI 默认模型为 `Qwen/Qwen3-8B`，BF16，关闭 thinking；Drive notebook 使用 30B/NF4。
+CLI 默认模型为 `Qwen/Qwen3-8B`，BF16，关闭 thinking；Drive notebook 默认使用 30B/BF16，NF4 为可选配置。
 actor 温度 0.7，top-p 0.8，top-k 20。
 guard 贪心解码。一个模型实例串行处理两种请求。
 

@@ -7,14 +7,14 @@ It compares **S/P/D execution × G0/G1/G2 guard views × clean/attack** using
 synthetic, resettable tool tasks. These guard labels are unrelated to the
 legacy G1/G2/G4 action capacities below. Restricted Python is not part of the new pilot.
 
-- [Colab notebook: reuse Drive weights](https://colab.research.google.com/github/yan510308856/Interface/blob/codex/multi-tool-colab/multi_tool_pilot/colab.ipynb)
+- [Colab notebook: reuse Drive weights](https://colab.research.google.com/github/yan510308856/Interface/blob/main/multi_tool_pilot/colab.ipynb)
 - [Pilot code and usage](multi_tool_pilot/README.md)
 - [Research protocol](docs/proposal_A_study_protocol_colab_2026-09-23.md) — design record; see pilot README for implemented scope and model options.
 - [Plain-language motivation](docs/proposal_A_execution_boundaries_plain_language.md)
 - [Merge description](docs/merge_multi_tool_colab.md)
 
 The notebook supports existing Qwen3-Coder-30B-A3B-Instruct safetensors on
-Google Drive, loaded with NF4 on a single GPU. Actual GPU loading and task
+Google Drive, loaded in BF16 on an A100 80GB by default (NF4 is optional). Actual GPU loading and task
 performance must be verified in Colab. Local smoke checks do not establish model performance.
 
 ```bash
